@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>鎰呈行生管系統 v3.0 (Admin版-完整欄位顯示)</title>
+    <title>鎰呈行生管系統 v3.1 (Admin版-CVN專屬優化)</title>
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -423,9 +423,12 @@
             const stats = useMemo(() => {
                 const totalOrders = dbData.length;
                 const totalUnfulfilled = dbData.reduce((acc, curr) => {
-                    // 尋找未交量 key
-                    const key = Object.keys(curr).find(k => k.trim() === '未交量');
-                    const qty = key ? parseFloat(curr[key]) : 0;
+                    // 尋找未交量 key (模糊比對)
+                    const key = Object.keys(curr).find(k => k.trim().includes('未交量'));
+                    // 處理含逗號的數字字串 '1,200' -> 1200
+                    let val = key ? curr[key] : 0;
+                    if (typeof val === 'string') val = val.replace(/,/g, '');
+                    const qty = parseFloat(val);
                     return acc + (isNaN(qty) ? 0 : qty);
                 }, 0);
                 const uniqueCustomers = new Set(dbData.map(d => {
@@ -443,12 +446,21 @@
                 
                 // 輔助函式：安全取得值
                 const getValue = (obj, keyName) => {
+                    // 支援模糊比對 (因為欄位名稱可能有差異)
                     const key = Object.keys(obj).find(k => k.trim() === keyName);
                     return key ? obj[key] : '';
                 };
 
+                // 針對未交量做特殊處理 (可能包含換行或差異)
+                const getQty = (obj) => {
+                    const key = Object.keys(obj).find(k => k.trim().includes('未交量'));
+                    let val = key ? obj[key] : 0;
+                    if (typeof val === 'string') val = val.replace(/,/g, '');
+                    return parseFloat(val);
+                };
+
                 const validOrders = filteredData.filter(row => {
-                    const qty = parseFloat(getValue(row, '未交量'));
+                    const qty = getQty(row);
                     return !isNaN(qty) && qty > 0.01;
                 });
 
@@ -468,11 +480,13 @@
                     '訂單號碼': getValue(row, '訂單號碼'),
                     '客戶單號': getValue(row, '客戶單號') || getValue(row, '客戶(採購)單號') || '',
                     '客戶名稱': getValue(row, '客戶名稱'),
+                    '品牌': getValue(row, '品牌') || '',
                     '公司品名': getValue(row, '公司品名'),
                     '成份': getValue(row, '成份') || '',
                     '加工方式': getValue(row, '加工方式') || '',
-                    '顏色': getValue(row, '中文顏色') || getValue(row, '顏色'),
-                    '未交量': parseFloat(getValue(row, '未交量')),
+                    '中文顏色': getValue(row, '中文顏色') || getValue(row, '顏色'),
+                    '英文顏色': getValue(row, '英文顏色') || '',
+                    '未交量': getQty(row),
                     '鞋名': getValue(row, '鞋名') || '',
                     '季節': getValue(row, '季節(出貨)') || '',
                     '備註': getValue(row, '備註(出貨)') || ''
@@ -480,8 +494,9 @@
 
                 const ws = window.XLSX.utils.json_to_sheet(exportData);
                 const wscols = [
-                    {wch: 12}, {wch: 15}, {wch: 18}, {wch: 20}, {wch: 25}, 
-                    {wch: 30}, {wch: 15}, {wch: 15}, {wch: 10}, {wch: 15}, {wch: 10}, {wch: 30}
+                    {wch: 12}, {wch: 15}, {wch: 18}, {wch: 20}, {wch: 10}, 
+                    {wch: 25}, {wch: 30}, {wch: 15}, {wch: 15}, {wch: 15}, 
+                    {wch: 10}, {wch: 15}, {wch: 10}, {wch: 30}
                 ];
                 ws['!cols'] = wscols;
 
@@ -774,7 +789,7 @@
                             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
                                 <div className="flex items-center gap-2">
                                     <div className="bg-blue-600 p-1.5 rounded-lg"><Icon name="Package" className="w-5 h-5 text-white" /></div>
-                                    <h1 className="text-xl font-bold text-slate-800 tracking-tight">鎰呈行生管系統 <span className="text-xs font-normal text-slate-500 ml-2">v3.0 (Admin)</span></h1>
+                                    <h1 className="text-xl font-bold text-slate-800 tracking-tight">鎰呈行生管系統 <span className="text-xs font-normal text-slate-500 ml-2">v3.1 (Admin)</span></h1>
                                 </div>
                                 <div className="flex items-center gap-4">
                                     <div className="hidden md:flex text-sm text-slate-500">使用者: Admin</div>
