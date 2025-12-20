@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>鎰呈行生管系統 v3.2 (Admin版-刪除功能+完整欄位)</title>
+    <title>鎰呈行生管系統 v3.3 (Admin版-移除重複欄位)</title>
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -289,7 +289,21 @@
                         }
 
                         const jsonData = window.XLSX.utils.sheet_to_json(ws, { range: headerRowIndex });
-                        const cleanData = jsonData.filter(row => {
+                        
+                        // 修正：移除重複的欄位 (例如 "訂單號碼_1")
+                        const processedJson = jsonData.map(row => {
+                            const newRow = { ...row };
+                            // 移除 SheetJS 自動產生的重複後綴欄位
+                            Object.keys(newRow).forEach(key => {
+                                if (key.endsWith('_1') && newRow[key.replace('_1', '')] !== undefined) {
+                                    // 如果是重複的欄位 (例如 訂單號碼_1 且 訂單號碼 存在)，則移除
+                                    delete newRow[key];
+                                }
+                            });
+                            return newRow;
+                        });
+
+                        const cleanData = processedJson.filter(row => {
                             const keys = Object.keys(row);
                             const orderKey = keys.find(key => key.trim() === '訂單號碼');
                             return orderKey && row[orderKey] && row[orderKey] !== '訂單號碼';
