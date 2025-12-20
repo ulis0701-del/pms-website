@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>鎰呈行生管系統 v3.6 (Admin版-Logo/Login修復)</title>
+    <title>鎰呈行生管系統 v3.7 (Admin版-交期欄位修正)</title>
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -698,7 +698,7 @@
                     const qty = getQty(d);
                     totalUnfulfilled += qty;
 
-                    // 計算逾期
+                    // 計算逾期 (修正：使用交貨日期)
                     const date = getValue(d, '交貨日期');
                     if (date && date < today && qty > 0) {
                         overdueCount++;
@@ -849,7 +849,12 @@
                                             </thead>
                                             <tbody>
                                                 {stats.urgentList.length > 0 ? stats.urgentList.map((row, idx) => {
-                                                    const date = Object.values(row).find(v => String(v).match(/^\d{4}-\d{2}-\d{2}$/));
+                                                    // 修正：明確使用 '交貨日期'
+                                                    const getValue = (obj, keyName) => {
+                                                        const key = Object.keys(obj).find(k => k.trim() === keyName);
+                                                        return key ? obj[key] : '';
+                                                    };
+                                                    const date = getValue(row, '交貨日期');
                                                     const today = new Date().toISOString().split('T')[0];
                                                     const isOverdue = date < today;
                                                     const qtyKey = Object.keys(row).find(k => k.includes('未交量'));
@@ -1124,7 +1129,7 @@
                             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
                                 <div className="flex items-center gap-2">
                                     <div className="bg-blue-600 p-1.5 rounded-lg"><Icon name="Package" className="w-5 h-5 text-white" /></div>
-                                    <h1 className="text-xl font-bold text-slate-800 tracking-tight">鎰呈行生管系統 <span className="text-xs font-normal text-slate-500 ml-2">v3.6 (Admin)</span></h1>
+                                    <h1 className="text-xl font-bold text-slate-800 tracking-tight">鎰呈行生管系統 <span className="text-xs font-normal text-slate-500 ml-2">v3.7 (Admin)</span></h1>
                                 </div>
                                 <div className="flex items-center gap-4">
                                     <div className="hidden md:flex text-sm text-slate-500">使用者: Admin</div>
