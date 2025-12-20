@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>鎰呈行生管系統 v3.7 (Admin版-交期欄位修正)</title>
+    <title>鎰呈行生管系統 v3.8 (Admin版-防崩潰修復)</title>
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -34,20 +34,18 @@
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         body { font-family: "Noto Sans TC", sans-serif; }
         
-        /* 表格優化：固定表頭與捲軸 */
         .table-container {
             overflow-x: auto;
             max-width: 100%;
-            max-height: 70vh; /* 設定最大高度讓垂直捲軸出現 */
+            max-height: 70vh;
         }
         .table-container thead th {
             position: sticky;
             top: 0;
-            background-color: #f1f5f9; /* slate-100 */
+            background-color: #f1f5f9;
             z-index: 10;
-            white-space: nowrap; /* 標題不換行 */
+            white-space: nowrap;
         }
-        /* 固定最右側的操作欄位 */
         .action-col {
             position: sticky;
             right: 0;
@@ -60,15 +58,13 @@
             z-index: 15;
         }
         tr:hover .action-col {
-            background-color: #f8fafc; /* slate-50 */
+            background-color: #f8fafc;
         }
-        /* Checkbox 樣式優化 */
         input[type="checkbox"] {
             width: 16px;
             height: 16px;
             cursor: pointer;
         }
-        /* 簡單的進度條動畫 */
         .progress-bar { transition: width 1s ease-in-out; }
     </style>
 </head>
@@ -99,7 +95,49 @@
             Timestamp 
         } from 'firebase/firestore';
 
-        // --- 設定區 (Configuration) ---
+        // --- 錯誤邊界元件 (防止白屏) ---
+        class ErrorBoundary extends React.Component {
+            constructor(props) {
+                super(props);
+                this.state = { hasError: false, error: null };
+            }
+
+            static getDerivedStateFromError(error) {
+                return { hasError: true, error };
+            }
+
+            componentDidCatch(error, errorInfo) {
+                console.error("Uncaught error:", error, errorInfo);
+            }
+
+            render() {
+                if (this.state.hasError) {
+                    return (
+                        <div className="min-h-screen flex flex-col items-center justify-center bg-red-50 p-8">
+                            <div className="bg-white p-8 rounded-xl shadow-lg max-w-lg w-full border border-red-200">
+                                <h1 className="text-2xl font-bold text-red-600 mb-4 flex items-center gap-2">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>
+                                    系統發生錯誤
+                                </h1>
+                                <p className="text-slate-600 mb-4">很抱歉，處理資料時發生了意外錯誤。這可能是因為 Excel 檔案格式異常或資料內容不符。</p>
+                                <div className="bg-slate-100 p-4 rounded text-xs text-red-500 font-mono overflow-auto max-h-40 mb-6">
+                                    {this.state.error && this.state.error.toString()}
+                                </div>
+                                <button 
+                                    onClick={() => window.location.reload()} 
+                                    className="w-full bg-blue-600 text-white px-4 py-3 rounded-lg hover:bg-blue-700 font-semibold transition-colors"
+                                >
+                                    重新整理頁面
+                                </button>
+                            </div>
+                        </div>
+                    );
+                }
+                return this.props.children; 
+            }
+        }
+
+        // --- 設定區 ---
         const firebaseConfig = {
             apiKey: "AIzaSyB3ChFwdh00DHs5dKDmzGbICellr4p9KVQ",
             authDomain: "yeechain-pms.firebaseapp.com",
@@ -110,7 +148,6 @@
             measurementId: "G-HMXZYNY1S1"
         };
 
-        // 初始化 Firebase
         let app, auth, db, analytics;
         try {
             app = initializeApp(firebaseConfig);
@@ -122,7 +159,7 @@
             console.error("Firebase 初始化錯誤:", e);
         }
 
-        // --- 內建圖示組件 (SVG Icons) ---
+        // --- Icons ---
         const Icons = {
             Package: <><path d="m16.5 9.4-9-5.19M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.27 6.96 12 12.01l8.73-5.05"/><path d="M12 22.08V12"/></>,
             LogOut: <><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></>,
@@ -151,18 +188,13 @@
         const Icon = ({ name, className }) => {
             const content = Icons[name];
             if (!content) return null;
-            return (
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-                    {content}
-                </svg>
-            );
+            return <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>{content}</svg>;
         };
 
-        // --- 簡單的長條圖組件 ---
+        // --- Chart ---
         const SimpleBarChart = ({ data, title, colorClass = "bg-blue-500" }) => {
             if (!data || data.length === 0) return <div className="p-4 text-center text-slate-400">尚無資料</div>;
-            const maxVal = Math.max(...data.map(d => d.value));
-            
+            const maxVal = Math.max(...data.map(d => d.value)) || 1;
             return (
                 <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm h-full">
                     <h3 className="text-lg font-semibold text-slate-800 mb-4">{title}</h3>
@@ -171,10 +203,7 @@
                             <div key={idx} className="flex items-center gap-3 text-sm">
                                 <div className="w-24 truncate font-medium text-slate-600 text-right" title={item.label}>{item.label}</div>
                                 <div className="flex-1 h-3 bg-slate-100 rounded-full overflow-hidden">
-                                    <div 
-                                        className={`h-full rounded-full ${colorClass} progress-bar`} 
-                                        style={{ width: `${(item.value / maxVal) * 100}%` }}
-                                    ></div>
+                                    <div className={`h-full rounded-full ${colorClass} progress-bar`} style={{ width: `${(item.value / maxVal) * 100}%` }}></div>
                                 </div>
                                 <div className="w-16 text-right text-slate-700 font-bold">{item.value.toLocaleString()}</div>
                             </div>
@@ -184,89 +213,46 @@
             );
         };
 
-        // --- 登入元件 ---
+        // --- Login ---
         const Login = ({ onAdminLogin, error }) => {
             const [username, setUsername] = useState('');
             const [password, setPassword] = useState('');
-
-            const handleSubmit = (e) => {
-                e.preventDefault(); // 防止表單預設提交刷新頁面
-                onAdminLogin(username, password);
-            };
 
             return (
                 <div className="min-h-screen flex items-center justify-center bg-slate-50">
                     <div className="max-w-md w-full bg-white rounded-xl shadow-lg p-8 border border-slate-100">
                         <div className="flex flex-col items-center mb-8">
-                            {/* Logo 修改：嘗試載入 logo.png，失敗則顯示預設圖示 */}
                             <div className="mb-4">
-                                <img 
-                                    src="logo.png" 
-                                    alt="鎰呈行 Logo" 
-                                    className="h-16 w-auto mx-auto object-contain"
-                                    onError={(e) => {
-                                        e.target.style.display = 'none';
-                                        e.target.nextSibling.style.display = 'flex';
-                                    }}
-                                />
-                                <div className="hidden bg-blue-600 p-3 rounded-full mx-auto justify-center items-center" style={{ width: 'fit-content' }}>
-                                    <Icon name="Package" className="w-8 h-8 text-white" />
-                                </div>
+                                <img src="logo.png" alt="Logo" className="h-16 w-auto mx-auto object-contain" onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }} />
+                                <div className="hidden bg-blue-600 p-3 rounded-full mx-auto justify-center items-center" style={{ width: 'fit-content' }}><Icon name="Package" className="w-8 h-8 text-white" /></div>
                             </div>
                             <h1 className="text-2xl font-bold text-slate-800">鎰呈行生管系統</h1>
                             <p className="text-slate-500 text-sm mt-2">Yee Chain International Co., Ltd.</p>
                         </div>
-                        {error && (
-                            <div className="mb-4 p-3 bg-red-50 text-red-700 text-sm rounded-lg flex items-center gap-2">
-                                <Icon name="AlertCircle" className="w-4 h-4 flex-shrink-0" />
-                                {error}
-                            </div>
-                        )}
-                        
-                        <form onSubmit={handleSubmit} className="space-y-4">
+                        {error && <div className="mb-4 p-3 bg-red-50 text-red-700 text-sm rounded-lg flex items-center gap-2"><Icon name="AlertCircle" className="w-4 h-4 flex-shrink-0" />{error}</div>}
+                        <form onSubmit={(e) => { e.preventDefault(); onAdminLogin(username, password); }} className="space-y-4">
                             <div>
                                 <label className="block text-sm font-medium text-slate-700 mb-1">帳號</label>
                                 <div className="relative">
-                                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                        <Icon name="User" className="h-5 w-5 text-slate-400" />
-                                    </div>
-                                    <input 
-                                        type="text" 
-                                        required 
-                                        className="block w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" 
-                                        placeholder="請輸入帳號" 
-                                        value={username} 
-                                        onChange={(e) => setUsername(e.target.value)} 
-                                    />
+                                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Icon name="User" className="h-5 w-5 text-slate-400" /></div>
+                                    <input type="text" required className="block w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="請輸入帳號" value={username} onChange={(e) => setUsername(e.target.value)} />
                                 </div>
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-slate-700 mb-1">密碼</label>
                                 <div className="relative">
-                                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                        <Icon name="Key" className="h-5 w-5 text-slate-400" />
-                                    </div>
-                                    <input 
-                                        type="password" 
-                                        required 
-                                        className="block w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" 
-                                        placeholder="請輸入密碼" 
-                                        value={password} 
-                                        onChange={(e) => setPassword(e.target.value)} 
-                                    />
+                                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Icon name="Key" className="h-5 w-5 text-slate-400" /></div>
+                                    <input type="password" required className="block w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="請輸入密碼" value={password} onChange={(e) => setPassword(e.target.value)} />
                                 </div>
                             </div>
-                            <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors flex items-center justify-center gap-2 mt-6">
-                                <span>登入系統</span>
-                            </button>
+                            <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors flex items-center justify-center gap-2 mt-6"><span>登入系統</span></button>
                         </form>
-                        <p className="text-center text-xs text-slate-400 mt-6">內部系統 • 需授權存取</p>
                     </div>
                 </div>
             );
         };
 
-        // --- 主儀表板元件 ---
+        // --- Dashboard ---
         const Dashboard = ({ user, onLogout }) => {
             const [fileData, setFileData] = useState([]);
             const [dbData, setDbData] = useState([]);
@@ -275,24 +261,20 @@
             const [activeTab, setActiveTab] = useState('dashboard');
             const [searchTerm, setSearchTerm] = useState('');
             const [errorMsg, setErrorMsg] = useState(null);
-            const [successMsg, setSuccessMsg] = useState(null); // 新增成功訊息
+            const [successMsg, setSuccessMsg] = useState(null);
             const [isDragging, setIsDragging] = useState(false);
             const [selectedIds, setSelectedIds] = useState(new Set());
             const fileInputRef = useRef(null);
 
-            useEffect(() => {
-                fetchOrders();
-            }, [user]);
+            useEffect(() => { fetchOrders(); }, [user]);
 
             const fetchOrders = async () => {
                 if (!db) return;
                 setLoading(true);
-                setErrorMsg(null);
                 try {
                     const q = query(collection(db, 'orders'));
                     const querySnapshot = await getDocs(q);
                     const data = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    // 排序優化：將日期轉為時間戳比較，處理空白
                     data.sort((a, b) => {
                         const dateA = a['交貨日期'] || '9999-12-31';
                         const dateB = b['交貨日期'] || '9999-12-31';
@@ -301,38 +283,20 @@
                     setDbData(data);
                     setSelectedIds(new Set());
                 } catch (error) {
-                    console.error("Error fetching documents: ", error);
-                    if (error.code === 'permission-denied') {
-                        setErrorMsg("權限不足！請確認 Firestore Rules 已正確設定。");
-                    } else {
-                        setErrorMsg("資料讀取失敗: " + error.message);
-                    }
-                } finally {
-                    setLoading(false);
-                }
+                    console.error(error);
+                    if (error.code === 'permission-denied') setErrorMsg("權限不足！請確認 Firestore Rules。");
+                    else setErrorMsg("資料讀取失敗: " + error.message);
+                } finally { setLoading(false); }
             };
 
-            // 統一處理檔案讀取邏輯
             const processFile = (file) => {
-                if (!file) return;
-                
-                if (!(file instanceof Blob)) {
-                    alert("檔案格式錯誤：請確保拖曳的是有效的 Excel檔案。");
-                    return;
-                }
-
-                if (!window.XLSX) {
-                    alert("系統元件 (SheetJS) 尚未載入完成，請重新整理網頁後再試。");
-                    return;
-                }
-
+                if (!file || !(file instanceof Blob)) return;
                 const reader = new FileReader();
                 reader.onload = (evt) => {
                     try {
                         const data = new Uint8Array(evt.target.result);
                         const wb = window.XLSX.read(data, { type: 'array' });
-                        const wsname = wb.SheetNames[0];
-                        const ws = wb.Sheets[wsname];
+                        const ws = wb.Sheets[wb.SheetNames[0]];
                         const rawData = window.XLSX.utils.sheet_to_json(ws, { header: 1 });
                         
                         let headerRowIndex = -1;
@@ -347,13 +311,11 @@
                             }
                         }
 
-                        if (headerRowIndex === -1) {
-                            alert("無法自動偵測表頭！\n請確認 Excel 檔案前 30 列中包含「訂單號碼」或「訂單日期」欄位。");
-                            return;
-                        }
+                        if (headerRowIndex === -1) { alert("無法自動偵測表頭！"); return; }
 
                         const jsonData = window.XLSX.utils.sheet_to_json(ws, { range: headerRowIndex });
                         
+                        // 資料清理：移除重複欄位與空資料
                         const processedJson = jsonData.map(row => {
                             const newRow = { ...row };
                             Object.keys(newRow).forEach(key => {
@@ -365,586 +327,234 @@
                         });
 
                         const cleanData = processedJson.filter(row => {
+                            if (!row) return false;
                             const keys = Object.keys(row);
-                            const orderKey = keys.find(key => key.trim() === '訂單號碼');
+                            const orderKey = keys.find(key => key && key.trim() === '訂單號碼');
                             return orderKey && row[orderKey] && row[orderKey] !== '訂單號碼';
                         });
                         
-                        if (cleanData.length === 0) {
-                            alert("匯入失敗：找不到有效資料。請確認檔案內容。");
-                            return;
-                        }
+                        if (cleanData.length === 0) { alert("匯入失敗：無有效資料"); return; }
 
                         setFileData(cleanData);
                         setActiveTab('import');
-                        setSuccessMsg(`成功讀取 ${cleanData.length} 筆資料！\n偵測到 ${Object.keys(cleanData[0] || {}).length} 個欄位。`);
+                        setSuccessMsg(`成功讀取 ${cleanData.length} 筆資料！`);
                         setTimeout(() => setSuccessMsg(null), 5000);
-
                     } catch (error) {
-                        console.error("Parsing error:", error);
-                        alert("解析 Excel 檔案發生錯誤：" + error.message);
+                        alert("解析錯誤：" + error.message);
                     }
                 };
                 reader.readAsArrayBuffer(file);
             };
 
-            const handleFileSelect = (e) => {
-                const file = e.target.files[0];
-                if (file) processFile(file);
-                e.target.value = null; 
-            };
-
-            const handleDragOver = (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
-                setIsDragging(true);
-            };
-
-            const handleDragLeave = (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                setIsDragging(false);
-            };
-
-            const handleDrop = (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                setIsDragging(false);
-                if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-                    const file = e.dataTransfer.files[0];
-                    processFile(file);
-                    if (e.dataTransfer.items) e.dataTransfer.items.clear();
-                    else e.dataTransfer.clearData();
-                }
-            };
+            const handleDragOver = (e) => { e.preventDefault(); e.stopPropagation(); if(e.dataTransfer) e.dataTransfer.dropEffect='copy'; setIsDragging(true); };
+            const handleDrop = (e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(false); if(e.dataTransfer.files[0]) processFile(e.dataTransfer.files[0]); };
 
             const saveToFirestore = async () => {
                 if (fileData.length === 0 || !db) return;
                 setUploading(true);
-                setErrorMsg(null);
-                setSuccessMsg(null);
-
                 try {
                     const batchSize = 450;
                     const chunks = [];
-                    for (let i = 0; i < fileData.length; i += batchSize) {
-                        chunks.push(fileData.slice(i, i + batchSize));
-                    }
-
+                    for (let i = 0; i < fileData.length; i += batchSize) chunks.push(fileData.slice(i, i + batchSize));
                     for (const chunk of chunks) {
                         const batch = writeBatch(db);
                         chunk.forEach((row) => {
                             const cleanRow = {};
+                            // 安全地處理 Key
                             Object.keys(row).forEach(key => {
-                                cleanRow[key.trim()] = row[key];
+                                if (key) cleanRow[key.trim()] = row[key];
                             });
-
                             const docRef = doc(collection(db, 'orders'));
-                            batch.set(docRef, {
-                                ...cleanRow,
-                                uploadedAt: Timestamp.now(),
-                                uploadedBy: user.displayName || 'Admin'
-                            });
+                            batch.set(docRef, { ...cleanRow, uploadedAt: Timestamp.now(), uploadedBy: user.displayName || 'Admin' });
                         });
                         await batch.commit();
                     }
-                    alert(`成功匯入 ${fileData.length} 筆資料到雲端資料庫！`);
-                    setFileData([]); 
-                    fetchOrders(); 
-                    setActiveTab('list');
-                } catch (error) {
-                    console.error("Error saving: ", error);
-                    if (error.code === 'permission-denied') {
-                        setErrorMsg("寫入被拒絕！請確認 Firebase 權限。");
-                    } else {
-                        alert("匯入失敗: " + error.message);
-                    }
-                } finally {
-                    setUploading(false);
-                }
+                    alert("匯入成功！");
+                    setFileData([]); fetchOrders(); setActiveTab('list');
+                } catch (e) { alert("匯入失敗: " + e.message); } finally { setUploading(false); }
             };
 
             const handleDelete = async (id) => {
-                if (!confirm("確定要刪除這筆資料嗎？")) return;
+                if (!confirm("確定刪除？")) return;
                 setLoading(true);
                 try {
                     await deleteDoc(doc(db, 'orders', id));
-                    setSuccessMsg("刪除成功！");
-                    setTimeout(() => setSuccessMsg(null), 3000);
-                    setDbData(prev => prev.filter(item => item.id !== id));
-                    const newSelected = new Set(selectedIds);
-                    newSelected.delete(id);
-                    setSelectedIds(newSelected);
-                } catch (error) {
-                    console.error("Delete error: ", error);
-                    alert("刪除失敗：" + error.message);
-                } finally {
-                    setLoading(false);
-                }
-            };
-
-            const handleDeleteAll = async () => {
-                if (!confirm("警告：確定要清空所有訂單資料嗎？此動作無法復原！")) return;
-                setLoading(true);
-                try {
-                    const q = query(collection(db, 'orders'));
-                    const snapshot = await getDocs(q);
-                    
-                    const batchSize = 400;
-                    const chunks = [];
-                    const docs = snapshot.docs;
-                    
-                    for (let i = 0; i < docs.length; i += batchSize) {
-                        chunks.push(docs.slice(i, i + batchSize));
-                    }
-
-                    for (const chunk of chunks) {
-                        const batch = writeBatch(db);
-                        chunk.forEach(doc => {
-                            batch.delete(doc.ref);
-                        });
-                        await batch.commit();
-                    }
-                    
-                    setDbData([]);
-                    setSelectedIds(new Set());
-                    setSuccessMsg(`已成功清空 ${docs.length} 筆資料！`);
-                    setTimeout(() => setSuccessMsg(null), 3000);
-                } catch (error) {
-                    console.error("Delete All error: ", error);
-                    alert("清空失敗：" + error.message);
-                } finally {
-                    setLoading(false);
-                }
+                    setSuccessMsg("刪除成功"); setTimeout(()=>setSuccessMsg(null),3000);
+                    setDbData(prev => prev.filter(i=>i.id!==id));
+                    const ns = new Set(selectedIds); ns.delete(id); setSelectedIds(ns);
+                } catch(e) { alert(e.message); } finally { setLoading(false); }
             };
 
             const handleDeleteSelected = async () => {
-                if (selectedIds.size === 0) return;
-                if (!confirm(`確定要刪除已選取的 ${selectedIds.size} 筆資料嗎？`)) return;
-                
+                if (!confirm(`刪除 ${selectedIds.size} 筆？`)) return;
                 setLoading(true);
                 try {
                     const batch = writeBatch(db);
-                    selectedIds.forEach(id => {
-                        const docRef = doc(db, 'orders', id);
-                        batch.delete(docRef);
-                    });
+                    selectedIds.forEach(id => batch.delete(doc(db, 'orders', id)));
                     await batch.commit();
-                    
-                    setDbData(prev => prev.filter(item => !selectedIds.has(item.id)));
+                    setDbData(prev => prev.filter(i => !selectedIds.has(i.id)));
                     setSelectedIds(new Set());
-                    setSuccessMsg(`已成功刪除 ${selectedIds.size} 筆資料！`);
-                    setTimeout(() => setSuccessMsg(null), 3000);
-                } catch (error) {
-                    console.error("Batch delete error: ", error);
-                    alert("批量刪除失敗：" + error.message);
-                } finally {
-                    setLoading(false);
-                }
+                    setSuccessMsg("批量刪除成功"); setTimeout(()=>setSuccessMsg(null),3000);
+                } catch(e) { alert(e.message); } finally { setLoading(false); }
+            };
+
+            // 輔助函式：安全取得值 (修復：確保 obj 存在)
+            const getValue = (obj, keyName) => {
+                if (!obj) return '';
+                const key = Object.keys(obj).find(k => k.trim() === keyName);
+                return key ? obj[key] : '';
+            };
+            const getQty = (obj) => {
+                if (!obj) return 0;
+                const key = Object.keys(obj).find(k => k.trim().includes('未交量'));
+                let val = key ? obj[key] : 0;
+                if (typeof val === 'string') val = val.replace(/,/g, '');
+                return parseFloat(val) || 0;
             };
 
             const filteredData = useMemo(() => {
                 return dbData.filter(item => {
-                    const searchStr = searchTerm.toLowerCase();
-                    const getValue = (obj, keyName) => {
-                        const key = Object.keys(obj).find(k => k.trim() === keyName);
-                        return key ? obj[key] : '';
-                    };
-
-                    const orderNo = getValue(item, '訂單號碼');
-                    const clientName = getValue(item, '客戶名稱');
-                    const productName = getValue(item, '公司品名');
-                    const clientOrderNo = getValue(item, '客戶單號');
-                    const purOrderNo = getValue(item, '客戶(採購)單號');
-
+                    const str = searchTerm.toLowerCase();
                     return (
-                        (orderNo && String(orderNo).toLowerCase().includes(searchStr)) ||
-                        (clientName && String(clientName).toLowerCase().includes(searchStr)) ||
-                        (productName && String(productName).toLowerCase().includes(searchStr)) ||
-                        (clientOrderNo && String(clientOrderNo).toLowerCase().includes(searchStr)) ||
-                        (purOrderNo && String(purOrderNo).toLowerCase().includes(searchStr))
+                        (getValue(item,'訂單號碼') || '').toString().toLowerCase().includes(str) ||
+                        (getValue(item,'客戶名稱') || '').toString().toLowerCase().includes(str) ||
+                        (getValue(item,'公司品名') || '').toString().toLowerCase().includes(str)
                     );
                 });
             }, [dbData, searchTerm]);
 
-            const handleSelectAll = (e) => {
-                if (e.target.checked) {
-                    const allIds = new Set(filteredData.map(item => item.id));
-                    setSelectedIds(allIds);
-                } else {
-                    setSelectedIds(new Set());
-                }
-            };
-
-            const handleSelectOne = (id) => {
-                const newSelected = new Set(selectedIds);
-                if (newSelected.has(id)) newSelected.delete(id);
-                else newSelected.add(id);
-                setSelectedIds(newSelected);
-            };
-
-            const handleExportSelected = () => {
-                if (selectedIds.size === 0) {
-                    alert("請先選取資料");
-                    return;
-                }
-                const selectedData = dbData.filter(item => selectedIds.has(item.id));
-                exportData(selectedData, "選取匯出");
-            };
-
-            const handleExportProcessed = () => {
-                if (filteredData.length === 0) {
-                    alert("沒有資料可以匯出");
-                    return;
-                }
-                
-                const getQty = (obj) => {
-                    const key = Object.keys(obj).find(k => k.trim().includes('未交量'));
-                    let val = key ? obj[key] : 0;
-                    if (typeof val === 'string') val = val.replace(/,/g, '');
-                    return parseFloat(val);
-                };
-
-                const validOrders = filteredData.filter(row => {
-                    const qty = getQty(row);
-                    return !isNaN(qty) && qty > 0.01;
-                });
-
-                if (validOrders.length === 0) {
-                    alert("篩選後沒有未交量 > 0 的訂單，無需匯出");
-                    return;
-                }
-                exportData(validOrders, "整理後未交明細");
-            };
-
-            // 通用匯出邏輯
-            const exportData = (data, sheetName) => {
-                const getValue = (obj, keyName) => {
-                    const key = Object.keys(obj).find(k => k.trim() === keyName);
-                    return key ? obj[key] : '';
-                };
-                const getQty = (obj) => {
-                    const key = Object.keys(obj).find(k => k.trim().includes('未交量'));
-                    let val = key ? obj[key] : 0;
-                    if (typeof val === 'string') val = val.replace(/,/g, '');
-                    return parseFloat(val);
-                };
-
-                data.sort((a, b) => {
-                    const dateA = getValue(a, '交貨日期') || '9999-12-31';
-                    const dateB = getValue(b, '交貨日期') || '9999-12-31';
-                    return String(dateA).localeCompare(String(dateB));
-                });
-
-                const formattedData = data.map(row => ({
-                    '交貨日期': getValue(row, '交貨日期'),
-                    '訂單號碼': getValue(row, '訂單號碼'),
-                    '客戶單號': getValue(row, '客戶單號') || getValue(row, '客戶(採購)單號') || '',
-                    '客戶名稱': getValue(row, '客戶名稱'),
-                    '品牌': getValue(row, '品牌') || '',
-                    '公司品名': getValue(row, '公司品名'),
-                    '成份': getValue(row, '成份') || '',
-                    '加工方式': getValue(row, '加工方式') || '',
-                    '中文顏色': getValue(row, '中文顏色') || getValue(row, '顏色'),
-                    '英文顏色': getValue(row, '英文顏色') || '',
-                    '未交量': getQty(row),
-                    '鞋名': getValue(row, '鞋名') || '',
-                    '季節': getValue(row, '季節(出貨)') || '',
-                    '備註': getValue(row, '備註(出貨)') || ''
-                }));
-
-                const ws = window.XLSX.utils.json_to_sheet(formattedData);
-                const wscols = [
-                    {wch: 12}, {wch: 15}, {wch: 18}, {wch: 20}, {wch: 10}, 
-                    {wch: 25}, {wch: 30}, {wch: 15}, {wch: 15}, {wch: 15}, 
-                    {wch: 10}, {wch: 15}, {wch: 10}, {wch: 30}
-                ];
-                ws['!cols'] = wscols;
-
-                const wb = window.XLSX.utils.book_new();
-                window.XLSX.utils.book_append_sheet(wb, ws, sheetName);
-                
-                const dateStr = new Date().toISOString().split('T')[0];
-                const filename = `${sheetName}_${dateStr}.xlsx`;
-
-                window.XLSX.writeFile(wb, filename);
-            };
-
-            // --- 統計與分析邏輯 ---
             const stats = useMemo(() => {
-                const totalOrders = dbData.length;
                 const today = new Date().toISOString().split('T')[0];
-                
-                // 輔助函式：安全取得值
-                const getValue = (obj, keyName) => {
-                    const key = Object.keys(obj).find(k => k.trim() === keyName);
-                    return key ? obj[key] : '';
-                };
-                const getQty = (obj) => {
-                    const key = Object.keys(obj).find(k => k.trim().includes('未交量'));
-                    let val = key ? obj[key] : 0;
-                    if (typeof val === 'string') val = val.replace(/,/g, '');
-                    return parseFloat(val) || 0;
-                };
-
-                let totalUnfulfilled = 0;
-                let overdueCount = 0;
-                const customersMap = {};
-                const monthlyMap = {};
+                let totalUnfulfilled=0, overdueCount=0;
+                const customersMap={}, monthlyMap={};
 
                 dbData.forEach(d => {
-                    // 計算未交量
                     const qty = getQty(d);
                     totalUnfulfilled += qty;
-
-                    // 計算逾期 (修正：使用交貨日期)
+                    // 修正：使用交貨日期
                     const date = getValue(d, '交貨日期');
-                    if (date && date < today && qty > 0) {
-                        overdueCount++;
-                    }
-
-                    // 客戶分佈
+                    if (date && date < today && qty > 0) overdueCount++;
                     const client = getValue(d, '客戶名稱') || 'Unknown';
-                    customersMap[client] = (customersMap[client] || 0) + qty;
-
-                    // 月份分佈 (YYYY-MM)
-                    if (date && date.length >= 7) {
-                        const month = date.substring(0, 7);
-                        monthlyMap[month] = (monthlyMap[month] || 0) + qty;
+                    customersMap[client] = (customersMap[client]||0) + qty;
+                    if (date && date.length>=7) {
+                        const m = date.substring(0,7);
+                        monthlyMap[m] = (monthlyMap[m]||0) + qty;
                     }
                 });
 
-                // 排序客戶 (Top 5)
-                const topCustomers = Object.entries(customersMap)
-                    .map(([label, value]) => ({ label, value }))
-                    .sort((a, b) => b.value - a.value)
-                    .slice(0, 5);
+                const urgentList = dbData.filter(d=>getQty(d)>0)
+                    .sort((a,b) => (getValue(a,'交貨日期')||'9').localeCompare(getValue(b,'交貨日期')||'9'))
+                    .slice(0,5);
 
-                // 排序月份 (近期 6 個月)
-                const timeline = Object.entries(monthlyMap)
-                    .map(([label, value]) => ({ label, value }))
-                    .sort((a, b) => a.label.localeCompare(b.label))
-                    .filter(item => item.label >= today.substring(0, 7) || item.label >= '2024-01') // 簡單過濾舊資料
-                    .slice(0, 6);
-
-                // 即將出貨/逾期清單 (Top 5)
-                const urgentList = dbData
-                    .filter(d => getQty(d) > 0)
-                    .sort((a, b) => {
-                        const da = getValue(a, '交貨日期') || '9999';
-                        const db = getValue(b, '交貨日期') || '9999';
-                        return da.localeCompare(db);
-                    })
-                    .slice(0, 5);
-
-                return { 
-                    totalOrders, 
-                    totalUnfulfilled, 
-                    uniqueCustomers: Object.keys(customersMap).length,
+                return {
+                    totalOrders: dbData.length,
+                    totalUnfulfilled,
                     overdueCount,
-                    topCustomers,
-                    timeline,
+                    uniqueCustomers: Object.keys(customersMap).length,
+                    topCustomers: Object.entries(customersMap).map(([label,v])=>({label,value:v})).sort((a,b)=>b.value-a.value).slice(0,5),
+                    timeline: Object.entries(monthlyMap).map(([label,v])=>({label,value:v})).sort((a,b)=>a.label.localeCompare(b.label)).slice(0,6),
                     urgentList
                 };
             }, [dbData]);
 
-            // 動態取得所有欄位名稱
+            // 防崩潰：importHeaders
+            const importHeaders = useMemo(() => {
+                if (!fileData || fileData.length === 0 || !fileData[0]) return [];
+                return Object.keys(fileData[0]);
+            }, [fileData]);
+
+            // 防崩潰：allTableHeaders
             const allTableHeaders = useMemo(() => {
-                if (dbData.length === 0) return [];
+                if (!dbData || dbData.length === 0) return [];
                 const keys = new Set();
-                dbData.slice(0, 50).forEach(row => {
-                    Object.keys(row).forEach(k => {
-                        if (k !== 'id' && k !== 'uploadedAt' && k !== 'uploadedBy') keys.add(k);
+                dbData.slice(0,50).forEach(row => {
+                    if(row) Object.keys(row).forEach(k => {
+                        if (k!=='id' && k!=='uploadedAt' && k!=='uploadedBy') keys.add(k);
                     });
                 });
-                
                 const priorityKeys = ['交貨日期', '訂單號碼', '客戶名稱', '公司品名', '顏色', '未交量'];
-                const sortedKeys = Array.from(keys).sort((a, b) => {
-                    const idxA = priorityKeys.findIndex(pk => a.includes(pk));
-                    const idxB = priorityKeys.findIndex(pk => b.includes(pk));
-                    if (idxA !== -1 && idxB !== -1) return idxA - idxB;
-                    if (idxA !== -1) return -1;
-                    if (idxB !== -1) return 1;
-                    return a.localeCompare(b, 'zh-TW');
+                return Array.from(keys).sort((a,b)=>{
+                    const idxA = priorityKeys.findIndex(pk=>a.includes(pk));
+                    const idxB = priorityKeys.findIndex(pk=>b.includes(pk));
+                    if(idxA!==-1 && idxB!==-1) return idxA-idxB;
+                    if(idxA!==-1) return -1;
+                    if(idxB!==-1) return 1;
+                    return a.localeCompare(b,'zh-TW');
                 });
-                return sortedKeys;
             }, [dbData]);
+
+            const handleExport = (dataToExport, name) => {
+                if(!dataToExport.length) {alert("無資料"); return;}
+                const exportData = dataToExport.map(row => ({
+                    '交貨日期': getValue(row, '交貨日期'),
+                    '訂單號碼': getValue(row, '訂單號碼'),
+                    '客戶單號': getValue(row, '客戶單號'),
+                    '客戶名稱': getValue(row, '客戶名稱'),
+                    '品牌': getValue(row, '品牌'),
+                    '公司品名': getValue(row, '公司品名'),
+                    '成份': getValue(row, '成份'),
+                    '加工方式': getValue(row, '加工方式'),
+                    '中文顏色': getValue(row, '中文顏色'),
+                    '英文顏色': getValue(row, '英文顏色'),
+                    '未交量': getQty(row),
+                    '鞋名': getValue(row, '鞋名'),
+                    '季節': getValue(row, '季節(出貨)'),
+                    '備註': getValue(row, '備註(出貨)')
+                }));
+                const ws = window.XLSX.utils.json_to_sheet(exportData);
+                const wb = window.XLSX.utils.book_new();
+                window.XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
+                window.XLSX.writeFile(wb, `${name}_${new Date().toISOString().split('T')[0]}.xlsx`);
+            };
 
             return (
                 <div className="flex flex-col h-full w-full">
-                    {/* Messages Banner */}
-                    {errorMsg && (
-                        <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-6 rounded-r shadow-sm">
-                            <div className="flex items-start">
-                                <div className="flex-shrink-0"><Icon name="Lock" className="h-5 w-5 text-red-500" /></div>
-                                <div className="ml-3"><h3 className="text-sm font-medium text-red-800">錯誤</h3><div className="mt-2 text-sm text-red-700"><p>{errorMsg}</p></div></div>
-                            </div>
-                        </div>
-                    )}
-                    {successMsg && (
-                        <div className="bg-green-50 border-l-4 border-green-500 p-4 mb-6 rounded-r shadow-sm animate-fade-in">
-                            <div className="flex items-start">
-                                <div className="flex-shrink-0"><Icon name="CheckCircle" className="h-5 w-5 text-green-500" /></div>
-                                <div className="ml-3"><h3 className="text-sm font-medium text-green-800">成功</h3><div className="mt-2 text-sm text-green-700"><p>{successMsg}</p></div></div>
-                            </div>
-                        </div>
-                    )}
+                    {errorMsg && <div className="bg-red-50 p-4 border-l-4 border-red-500 text-red-700 mb-4">{errorMsg}</div>}
+                    {successMsg && <div className="bg-green-50 p-4 border-l-4 border-green-500 text-green-700 mb-4 animate-fade-in">{successMsg}</div>}
 
-                    {/* Tabs */}
                     <div className="flex space-x-1 bg-slate-200 p-1 rounded-lg w-fit mb-6">
-                        <button onClick={() => setActiveTab('dashboard')} className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'dashboard' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-800'}`}>儀表板</button>
-                        <button onClick={() => setActiveTab('list')} className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'list' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-800'}`}>未交訂單列表</button>
-                        <button onClick={() => setActiveTab('import')} className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'import' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-800'}`}>匯入新資料</button>
+                        <button onClick={()=>setActiveTab('dashboard')} className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab==='dashboard'?'bg-white text-blue-600 shadow-sm':'text-slate-600'}`}>儀表板</button>
+                        <button onClick={()=>setActiveTab('list')} className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab==='list'?'bg-white text-blue-600 shadow-sm':'text-slate-600'}`}>未交訂單列表</button>
+                        <button onClick={()=>setActiveTab('import')} className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab==='import'?'bg-white text-blue-600 shadow-sm':'text-slate-600'}`}>匯入新資料</button>
                     </div>
 
-                    {/* Content */}
                     <div className="bg-white rounded-xl shadow-sm border border-slate-200 min-h-[500px] overflow-hidden">
                         {activeTab === 'dashboard' && (
                             <div className="p-6 bg-slate-50 h-full overflow-y-auto">
-                                {/* Top Stats Row */}
                                 <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
-                                    <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex justify-between items-center">
-                                        <div><p className="text-sm text-slate-500 mb-1">未交訂單總數</p><p className="text-2xl font-bold text-slate-800">{stats.totalOrders}</p></div>
-                                        <div className="bg-blue-50 p-3 rounded-lg"><Icon name="FileSpreadsheet" className="w-6 h-6 text-blue-600" /></div>
-                                    </div>
-                                    <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex justify-between items-center">
-                                        <div><p className="text-sm text-slate-500 mb-1">未交總量 (Yds)</p><p className="text-2xl font-bold text-emerald-600">{stats.totalUnfulfilled.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p></div>
-                                        <div className="bg-emerald-50 p-3 rounded-lg"><Icon name="TrendingUp" className="w-6 h-6 text-emerald-600" /></div>
-                                    </div>
-                                    <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex justify-between items-center">
-                                        <div><p className="text-sm text-slate-500 mb-1">逾期訂單</p><p className="text-2xl font-bold text-red-600">{stats.overdueCount}</p></div>
-                                        <div className="bg-red-50 p-3 rounded-lg"><Icon name="Bell" className="w-6 h-6 text-red-600" /></div>
-                                    </div>
-                                    <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex justify-between items-center">
-                                        <div><p className="text-sm text-slate-500 mb-1">客戶家數</p><p className="text-2xl font-bold text-purple-600">{stats.uniqueCustomers}</p></div>
-                                        <div className="bg-purple-50 p-3 rounded-lg"><Icon name="Truck" className="w-6 h-6 text-purple-600" /></div>
-                                    </div>
+                                    <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex justify-between"><div className="text-slate-500 text-sm">未交訂單<p className="text-2xl font-bold text-slate-800">{stats.totalOrders}</p></div><div className="bg-blue-50 p-3 rounded-lg"><Icon name="FileSpreadsheet" className="w-6 h-6 text-blue-600"/></div></div>
+                                    <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex justify-between"><div className="text-slate-500 text-sm">未交總量<p className="text-2xl font-bold text-emerald-600">{stats.totalUnfulfilled.toLocaleString()}</p></div><div className="bg-emerald-50 p-3 rounded-lg"><Icon name="TrendingUp" className="w-6 h-6 text-emerald-600"/></div></div>
+                                    <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex justify-between"><div className="text-slate-500 text-sm">逾期急件<p className="text-2xl font-bold text-red-600">{stats.overdueCount}</p></div><div className="bg-red-50 p-3 rounded-lg"><Icon name="Bell" className="w-6 h-6 text-red-600"/></div></div>
+                                    <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex justify-between"><div className="text-slate-500 text-sm">客戶家數<p className="text-2xl font-bold text-purple-600">{stats.uniqueCustomers}</p></div><div className="bg-purple-50 p-3 rounded-lg"><Icon name="Truck" className="w-6 h-6 text-purple-600"/></div></div>
                                 </div>
-
-                                {/* Middle Charts Row */}
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                                    <SimpleBarChart data={stats.topCustomers} title="前 5 大未交客戶 (數量)" colorClass="bg-blue-500" />
-                                    <SimpleBarChart data={stats.timeline} title="交期波段預估 (月份)" colorClass="bg-emerald-500" />
+                                    <SimpleBarChart data={stats.topCustomers} title="前 5 大客戶 (未交量)" />
+                                    <SimpleBarChart data={stats.timeline} title="交期波段預估" colorClass="bg-emerald-500" />
                                 </div>
-
-                                {/* Bottom List Row */}
-                                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                                    <div className="flex justify-between items-center mb-4">
-                                        <h3 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
-                                            <Icon name="Calendar" className="w-5 h-5 text-slate-500" />
-                                            即將到期 / 逾期急件預覽
-                                        </h3>
-                                        <button onClick={() => setActiveTab('list')} className="text-sm text-blue-600 hover:underline">查看全部 &rarr;</button>
-                                    </div>
-                                    <div className="overflow-x-auto">
-                                        <table className="w-full text-sm text-left text-slate-600">
-                                            <thead className="bg-slate-50 text-slate-700">
-                                                <tr>
-                                                    <th className="px-4 py-2">交期</th>
-                                                    <th className="px-4 py-2">訂單號碼</th>
-                                                    <th className="px-4 py-2">客戶</th>
-                                                    <th className="px-4 py-2 text-right">未交量</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {stats.urgentList.length > 0 ? stats.urgentList.map((row, idx) => {
-                                                    // 修正：明確使用 '交貨日期'
-                                                    const getValue = (obj, keyName) => {
-                                                        const key = Object.keys(obj).find(k => k.trim() === keyName);
-                                                        return key ? obj[key] : '';
-                                                    };
-                                                    const date = getValue(row, '交貨日期');
-                                                    const today = new Date().toISOString().split('T')[0];
-                                                    const isOverdue = date < today;
-                                                    const qtyKey = Object.keys(row).find(k => k.includes('未交量'));
-                                                    
-                                                    return (
-                                                        <tr key={idx} className="border-b">
-                                                            <td className="px-4 py-2">
-                                                                <span className={`px-2 py-1 rounded text-xs font-bold ${isOverdue ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}>
-                                                                    {date || '-'}
-                                                                </span>
-                                                            </td>
-                                                            <td className="px-4 py-2 font-medium">{row['訂單號碼'] || '-'}</td>
-                                                            <td className="px-4 py-2">{row['客戶名稱'] || '-'}</td>
-                                                            <td className="px-4 py-2 text-right font-bold">{qtyKey ? row[qtyKey] : 0}</td>
-                                                        </tr>
-                                                    );
-                                                }) : (
-                                                    <tr><td colSpan="4" className="px-4 py-4 text-center text-slate-400">目前沒有急件資料</td></tr>
-                                                )}
-                                            </tbody>
-                                        </table>
-                                    </div>
+                                <div className="bg-white p-6 rounded-xl border shadow-sm">
+                                    <div className="flex justify-between mb-4"><h3 className="font-bold flex gap-2"><Icon name="Calendar" className="w-5 h-5"/> 即將到期 / 逾期急件 (前5筆)</h3></div>
+                                    <table className="w-full text-sm text-left"><thead className="bg-slate-50"><tr><th className="px-4 py-2">交貨日期</th><th className="px-4 py-2">訂單</th><th className="px-4 py-2">客戶</th><th className="px-4 py-2 text-right">量</th></tr></thead>
+                                        <tbody>
+                                            {stats.urgentList.map((r,i)=>(<tr key={i} className="border-b"><td className="px-4 py-2 text-red-600 font-bold">{getValue(r,'交貨日期')}</td><td className="px-4 py-2">{getValue(r,'訂單號碼')}</td><td className="px-4 py-2">{getValue(r,'客戶名稱')}</td><td className="px-4 py-2 text-right">{getQty(r)}</td></tr>))}
+                                        </tbody>
+                                    </table>
                                 </div>
                             </div>
                         )}
 
                         {activeTab === 'import' && (
                             <div className="p-6">
-                                {/* 修復：使用 div 處理點擊和拖曳，input 隱藏 */}
-                                <div 
-                                    onClick={() => fileInputRef.current && fileInputRef.current.click()}
-                                    onDragOver={handleDragOver}
-                                    onDragLeave={handleDragLeave}
-                                    onDrop={handleDrop}
-                                    className={`border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center bg-slate-50 hover:bg-slate-100 transition-colors cursor-pointer relative mb-6 ${isDragging ? 'border-blue-500 bg-blue-50' : 'border-slate-300'}`}
-                                >
-                                    <input 
-                                        type="file" 
-                                        accept=".xlsx, .xls, .csv" 
-                                        ref={fileInputRef}
-                                        onChange={handleFileSelect} 
-                                        className="hidden" 
-                                    />
-                                    <Icon name="Upload" className={`w-12 h-12 mb-4 ${isDragging ? 'text-blue-600' : 'text-blue-500'}`} />
-                                    <p className="text-lg font-medium text-slate-700">點擊或拖曳 Excel 檔案至此</p>
-                                    <p className="text-sm text-slate-400 mt-2">支援標準未交訂單格式 (.xlsx)</p>
+                                <div onClick={()=>fileInputRef.current.click()} onDragOver={handleDragOver} onDrop={handleDrop} className={`border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center bg-slate-50 hover:bg-slate-100 cursor-pointer mb-6 ${isDragging?'border-blue-500':''}`}>
+                                    <input type="file" ref={fileInputRef} onChange={(e)=>processFile(e.target.files[0])} className="hidden" accept=".xlsx,.xls"/>
+                                    <Icon name="Upload" className="w-12 h-12 text-blue-500 mb-4"/><p className="font-medium text-slate-700">點擊或拖曳 Excel 檔案</p>
                                 </div>
-
-                                {fileData.length > 0 && (
+                                {fileData.length>0 && (
                                     <div className="animate-fade-in">
-                                        <div className="flex items-center justify-between mb-4">
-                                            <h3 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
-                                                <Icon name="CheckCircle" className="w-5 h-5 text-green-500" />
-                                                預覽匯入資料 ({fileData.length} 筆)
-                                                <span className="text-xs font-normal text-slate-500 ml-2">偵測到 {importHeaders.length} 個欄位</span>
-                                            </h3>
-                                            <div className="flex gap-2">
-                                                <button onClick={() => setFileData([])} className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg">取消</button>
-                                                <button onClick={saveToFirestore} disabled={uploading} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 disabled:opacity-50">
-                                                    {uploading ? <Icon name="RefreshCw" className="w-4 h-4 animate-spin" /> : <Icon name="Database" className="w-4 h-4" />}
-                                                    確認匯入資料庫
-                                                </button>
-                                            </div>
+                                        <div className="flex justify-between items-center mb-4"><h3 className="font-bold flex gap-2"><Icon name="CheckCircle" className="text-green-500 w-5 h-5"/> 預覽 {fileData.length} 筆</h3>
+                                        <div className="flex gap-2"><button onClick={()=>setFileData([])} className="px-3 py-1 text-slate-600 hover:bg-slate-100 rounded">取消</button><button onClick={saveToFirestore} disabled={uploading} className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">確認匯入</button></div></div>
+                                        <div className="table-container border rounded max-h-[500px]">
+                                            <table className="w-full text-sm text-left"><thead className="bg-slate-100"><tr>{importHeaders.map((h,i)=><th key={i} className="px-4 py-2 border-b">{h}</th>)}</tr></thead><tbody>{fileData.slice(0,50).map((r,i)=><tr key={i} className="bg-white border-b hover:bg-slate-50">{importHeaders.map((h,j)=><td key={j} className="px-4 py-2">{r[h]}</td>)}</tr>)}</tbody></table>
                                         </div>
-                                        {/* 修改：顯示所有欄位，不再截斷 */}
-                                        <div className="table-container border rounded-lg max-h-[500px]">
-                                            <table className="w-full text-sm text-left text-slate-600">
-                                                <thead className="text-xs text-slate-700 uppercase bg-slate-100">
-                                                    <tr>
-                                                        {importHeaders.map((header, idx) => (
-                                                            <th key={idx} className="px-6 py-3 whitespace-nowrap border-b min-w-[100px]">{header}</th>
-                                                        ))}
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {fileData.slice(0, 50).map((row, idx) => (
-                                                        <tr key={idx} className="bg-white border-b hover:bg-slate-50">
-                                                            {importHeaders.map((header, vIdx) => (
-                                                                <td key={vIdx} className="px-6 py-4 whitespace-nowrap">{row[header] !== undefined ? String(row[header]) : ''}</td>
-                                                            ))}
-                                                        </tr>
-                                                    ))}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                        {fileData.length > 50 && (
-                                            <div className="p-4 text-center text-slate-500 bg-slate-50 border-t">
-                                                還有 {fileData.length - 50} 筆資料未顯示...
-                                            </div>
-                                        )}
                                     </div>
                                 )}
                             </div>
@@ -952,135 +562,44 @@
 
                         {activeTab === 'list' && (
                             <div className="flex flex-col h-full">
-                                <div className="p-4 border-b border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white">
-                                    <div className="relative flex-1 max-w-md">
-                                        <div className="absolute left-3 top-1/2 -translate-y-1/2"><Icon name="Search" className="w-4 h-4 text-slate-400" /></div>
-                                        <input type="text" placeholder="搜尋訂單、客戶、單號、品名..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <button onClick={fetchOrders} className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg" title="重新整理"><Icon name="RefreshCw" className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} /></button>
-                                        
-                                        {/* 工具列：依據選取狀態切換按鈕 */}
-                                        {selectedIds.size > 0 ? (
+                                <div className="p-4 border-b flex justify-between items-center bg-white">
+                                    <div className="relative max-w-md flex-1"><Icon name="Search" className="absolute left-3 top-2.5 w-4 h-4 text-slate-400"/><input type="text" placeholder="搜尋..." value={searchTerm} onChange={(e)=>setSearchTerm(e.target.value)} className="pl-10 pr-4 py-2 border rounded-lg w-full"/></div>
+                                    <div className="flex gap-2">
+                                        <button onClick={fetchOrders} className="p-2 hover:bg-slate-100 rounded"><Icon name="RefreshCw" className="w-5 h-5"/></button>
+                                        {selectedIds.size>0 ? (
                                             <>
-                                                <button 
-                                                    onClick={handleDeleteSelected}
-                                                    className="flex items-center gap-2 px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 shadow-sm transition-colors"
-                                                    title={`刪除選取的 ${selectedIds.size} 筆資料`}
-                                                >
-                                                    <Icon name="Trash" className="w-4 h-4" />
-                                                    <span>刪除選取 ({selectedIds.size})</span>
-                                                </button>
-                                                <button 
-                                                    onClick={handleExportSelected}
-                                                    className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-sm transition-colors"
-                                                    title={`匯出選取的 ${selectedIds.size} 筆資料`}
-                                                >
-                                                    <Icon name="Download" className="w-4 h-4" />
-                                                    <span>匯出選取 ({selectedIds.size})</span>
-                                                </button>
+                                                <button onClick={handleDeleteSelected} className="bg-red-600 text-white px-3 py-2 rounded hover:bg-red-700 flex gap-1"><Icon name="Trash" className="w-4 h-4"/> 刪除 ({selectedIds.size})</button>
+                                                <button onClick={()=>handleExport(filteredData.filter(i=>selectedIds.has(i.id)), '選取匯出')} className="bg-blue-600 text-white px-3 py-2 rounded hover:bg-blue-700 flex gap-1"><Icon name="Download" className="w-4 h-4"/> 匯出</button>
                                             </>
-                                        ) : (
+                                        ):(
                                             <>
-                                                <button 
-                                                    onClick={handleDeleteAll}
-                                                    className="flex items-center gap-2 px-3 py-2 bg-red-50 text-red-600 border border-red-200 rounded-lg hover:bg-red-100 transition-colors"
-                                                    title="清空所有資料"
-                                                >
-                                                    <Icon name="Trash2" className="w-4 h-4" />
-                                                    <span className="hidden sm:inline">清空資料</span>
-                                                </button>
-
-                                                <button onClick={handleExportProcessed} className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 shadow-sm transition-colors" title="匯出所有整理後的報表">
-                                                    <Icon name="FileOutput" className="w-4 h-4" />
-                                                    <span>匯出整理後報表</span>
-                                                </button>
+                                                <button onClick={handleDeleteAll} className="text-red-600 border border-red-200 px-3 py-2 rounded hover:bg-red-50 flex gap-1"><Icon name="Trash2" className="w-4 h-4"/> 清空</button>
+                                                <button onClick={()=>handleExport(filteredData, '整理後報表')} className="bg-emerald-600 text-white px-3 py-2 rounded hover:bg-emerald-700 flex gap-1"><Icon name="FileOutput" className="w-4 h-4"/> 匯出全部</button>
                                             </>
                                         )}
                                     </div>
                                 </div>
-                                <div className="overflow-x-auto flex-1 table-container">
-                                    {loading && dbData.length === 0 ? (
-                                        <div className="flex flex-col items-center justify-center h-64 text-slate-400"><Icon name="RefreshCw" className="w-8 h-8 animate-spin mb-2" /><p>載入中...</p></div>
-                                    ) : filteredData.length === 0 ? (
-                                        <div className="flex flex-col items-center justify-center h-64 text-slate-400"><Icon name="AlertCircle" className="w-8 h-8 mb-2" /><p>沒有符合的資料</p></div>
-                                    ) : (
-                                        /* 完整欄位顯示表格 */
-                                        <table className="w-full text-sm text-left text-slate-600">
-                                            <thead className="text-xs text-slate-700 uppercase bg-slate-100 sticky top-0">
-                                                <tr>
-                                                    {/* 選取欄位 */}
-                                                    <th className="px-4 py-3 border-b border-slate-200 w-12 text-center">
-                                                        <input 
-                                                            type="checkbox" 
-                                                            onChange={handleSelectAll}
-                                                            checked={filteredData.length > 0 && selectedIds.size === filteredData.length}
-                                                        />
-                                                    </th>
-                                                    {/* 動態渲染所有標題 */}
-                                                    {allTableHeaders.map((header, idx) => (
-                                                        <th key={idx} className="px-4 py-3 border-b border-slate-200 whitespace-nowrap min-w-[120px]">
-                                                            {header}
-                                                        </th>
-                                                    ))}
-                                                    {/* 刪除按鈕欄位 */}
-                                                    <th className="px-4 py-3 border-b border-slate-200 action-col text-center w-16">
-                                                        操作
-                                                    </th>
+                                <div className="flex-1 overflow-auto table-container">
+                                    <table className="w-full text-sm text-left">
+                                        <thead className="bg-slate-100">
+                                            <tr>
+                                                <th className="px-4 py-3 w-12 text-center"><input type="checkbox" onChange={(e)=>{if(e.target.checked) setSelectedIds(new Set(filteredData.map(i=>i.id))); else setSelectedIds(new Set());}} checked={filteredData.length>0 && selectedIds.size===filteredData.length}/></th>
+                                                {allTableHeaders.map((h,i)=><th key={i} className="px-4 py-3 border-b">{h}</th>)}
+                                                <th className="px-4 py-3 border-b action-col text-center">操作</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {filteredData.map(row => (
+                                                <tr key={row.id} className={`border-b hover:bg-slate-50 ${selectedIds.has(row.id)?'bg-blue-50':'bg-white'}`}>
+                                                    <td className="px-4 py-3 text-center"><input type="checkbox" checked={selectedIds.has(row.id)} onChange={()=>{const ns=new Set(selectedIds); if(ns.has(row.id)) ns.delete(row.id); else ns.add(row.id); setSelectedIds(ns);}}/></td>
+                                                    {allTableHeaders.map((h,i)=><td key={i} className="px-4 py-3 whitespace-nowrap">{row[h]}</td>)}
+                                                    <td className="px-4 py-3 action-col text-center"><button onClick={()=>handleDelete(row.id)} className="text-slate-400 hover:text-red-600"><Icon name="Trash" className="w-4 h-4"/></button></td>
                                                 </tr>
-                                            </thead>
-                                            <tbody>
-                                                {filteredData.map((row) => (
-                                                    <tr key={row.id} className={`border-b hover:bg-slate-50 transition-colors group ${selectedIds.has(row.id) ? 'bg-blue-50' : 'bg-white'}`}>
-                                                        {/* 選取 Checkbox */}
-                                                        <td className="px-4 py-3 border-b border-slate-100 text-center">
-                                                            <input 
-                                                                type="checkbox" 
-                                                                checked={selectedIds.has(row.id)}
-                                                                onChange={() => handleSelectOne(row.id)}
-                                                            />
-                                                        </td>
-                                                        {/* 動態渲染所有儲存格 */}
-                                                        {allTableHeaders.map((header, vIdx) => {
-                                                            let content = row[header];
-                                                            // 特殊欄位美化 (例如日期)
-                                                            if (header.includes('日期') && content) {
-                                                                const isOverdue = String(content) < new Date().toISOString().split('T')[0];
-                                                                return (
-                                                                    <td key={vIdx} className="px-4 py-3 whitespace-nowrap">
-                                                                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${isOverdue ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
-                                                                            {String(content)}
-                                                                        </span>
-                                                                    </td>
-                                                                );
-                                                            }
-                                                            return (
-                                                                <td key={vIdx} className="px-4 py-3 whitespace-nowrap max-w-xs truncate" title={String(content || '')}>
-                                                                    {content !== undefined ? String(content) : ''}
-                                                                </td>
-                                                            );
-                                                        })}
-                                                        
-                                                        {/* 單筆刪除按鈕 */}
-                                                        <td className="px-4 py-3 border-b action-col text-center">
-                                                            <button 
-                                                                onClick={() => handleDelete(row.id)}
-                                                                className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors"
-                                                                title="刪除此筆"
-                                                            >
-                                                                <Icon name="Trash" className="w-4 h-4" />
-                                                            </button>
-                                                        </td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    )}
+                                            ))}
+                                        </tbody>
+                                    </table>
                                 </div>
-                                <div className="p-2 border-t border-slate-200 bg-slate-50 text-xs text-slate-500 text-right">
-                                    {selectedIds.size > 0 && <span className="mr-4 text-blue-600 font-medium">已選取 {selectedIds.size} 筆</span>}
-                                    顯示 {filteredData.length} 筆資料
-                                </div>
+                                <div className="p-2 border-t text-right text-xs text-slate-500">顯示 {filteredData.length} 筆</div>
                             </div>
                         )}
                     </div>
@@ -1094,58 +613,33 @@
             const [loginError, setLoginError] = useState(null);
 
             useEffect(() => {
-                if (!auth) {
-                    setLoading(false);
-                    return;
-                }
-                const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-                    setUser(currentUser);
-                    setLoading(false);
-                });
-                return unsubscribe;
+                if (!auth) { setLoading(false); return; }
+                return onAuthStateChanged(auth, u => { setUser(u); setLoading(false); });
             }, []);
 
-            const handleAdminLogin = async (username, password) => {
-                if (!auth) { setLoginError("系統錯誤：Firebase 未初始化"); return; }
-                if (username === 'admin' && password === 'sweet405') {
-                    try {
-                        const userCredential = await signInAnonymously(auth);
-                    } catch(e) {
-                        setLoginError("連線失敗: " + e.message);
-                    }
-                } else {
-                    setLoginError("帳號或密碼錯誤");
-                }
+            const handleLogin = async (u, p) => {
+                if(!auth){setLoginError("Firebase Error"); return;}
+                if(u==='admin' && p==='sweet405') {
+                    try { await signInAnonymously(auth); } catch(e){setLoginError(e.message);}
+                } else { setLoginError("帳號或密碼錯誤"); }
             };
 
-            const handleLogout = async () => { if (auth) await signOut(auth); setUser(null); };
-
-            if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><Icon name="RefreshCw" className="w-8 h-8 text-blue-600 animate-spin" /></div>;
+            if (loading) return <div className="min-h-screen flex justify-center items-center"><Icon name="RefreshCw" className="animate-spin w-8 h-8 text-blue-600"/></div>;
 
             return (
-                <div className="min-h-screen bg-slate-50 flex flex-col">
-                    {user && (
-                        <header className="bg-white shadow-sm border-b border-slate-200 sticky top-0 z-10">
-                            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                    <div className="bg-blue-600 p-1.5 rounded-lg"><Icon name="Package" className="w-5 h-5 text-white" /></div>
-                                    <h1 className="text-xl font-bold text-slate-800 tracking-tight">鎰呈行生管系統 <span className="text-xs font-normal text-slate-500 ml-2">v3.7 (Admin)</span></h1>
-                                </div>
-                                <div className="flex items-center gap-4">
-                                    <div className="hidden md:flex text-sm text-slate-500">使用者: Admin</div>
-                                    <button onClick={handleLogout} className="p-2 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors" title="登出"><Icon name="LogOut" className="w-5 h-5" /></button>
-                                </div>
-                            </div>
-                        </header>
-                    )}
-                    <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
-                        {user ? (
-                            <Dashboard user={{...user, displayName: 'Admin'}} onLogout={handleLogout} />
-                        ) : (
-                            <Login onAdminLogin={handleAdminLogin} error={loginError} />
+                <ErrorBoundary>
+                    <div className="min-h-screen bg-slate-50 flex flex-col">
+                        {user && (
+                            <header className="bg-white shadow-sm border-b sticky top-0 z-20 px-6 py-3 flex justify-between items-center">
+                                <div className="flex items-center gap-2 font-bold text-xl text-slate-800"><Icon name="Package" className="text-blue-600 w-6 h-6"/> 鎰呈行生管系統 v3.8</div>
+                                <button onClick={()=>signOut(auth)} className="text-slate-500 hover:text-red-600"><Icon name="LogOut" className="w-5 h-5"/></button>
+                            </header>
                         )}
-                    </main>
-                </div>
+                        <main className="flex-1 max-w-7xl mx-auto w-full p-4">
+                            {user ? <Dashboard user={user}/> : <Login onAdminLogin={handleLogin} error={loginError}/>}
+                        </main>
+                    </div>
+                </ErrorBoundary>
             );
         };
 
