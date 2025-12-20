@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>鎰呈行生管系統 v3.4 (Admin版-選取與批量操作)</title>
+    <title>鎰呈行生管系統 v3.5 (Admin版-戰情室儀表板)</title>
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -68,6 +68,8 @@
             height: 16px;
             cursor: pointer;
         }
+        /* 簡單的進度條動畫 */
+        .progress-bar { transition: width 1s ease-in-out; }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-800">
@@ -141,7 +143,9 @@
             User: <><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></>,
             Key: <><path d="m21 2-2 2m-7.6 7.6a6 6 0 1 1-2.4-12 6 6 0 0 1 2.4 12z"/><path d="m10 15 5 5 3-3"/></>,
             Trash: <><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></>,
-            Trash2: <><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></>
+            Trash2: <><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></>,
+            Bell: <><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></>,
+            Calendar: <><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></>
         };
 
         const Icon = ({ name, className }) => {
@@ -151,6 +155,32 @@
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
                     {content}
                 </svg>
+            );
+        };
+
+        // --- 簡單的長條圖組件 ---
+        const SimpleBarChart = ({ data, title, colorClass = "bg-blue-500" }) => {
+            if (!data || data.length === 0) return <div className="p-4 text-center text-slate-400">尚無資料</div>;
+            const maxVal = Math.max(...data.map(d => d.value));
+            
+            return (
+                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm h-full">
+                    <h3 className="text-lg font-semibold text-slate-800 mb-4">{title}</h3>
+                    <div className="space-y-4">
+                        {data.map((item, idx) => (
+                            <div key={idx} className="flex items-center gap-3 text-sm">
+                                <div className="w-24 truncate font-medium text-slate-600 text-right" title={item.label}>{item.label}</div>
+                                <div className="flex-1 h-3 bg-slate-100 rounded-full overflow-hidden">
+                                    <div 
+                                        className={`h-full rounded-full ${colorClass} progress-bar`} 
+                                        style={{ width: `${(item.value / maxVal) * 100}%` }}
+                                    ></div>
+                                </div>
+                                <div className="w-16 text-right text-slate-700 font-bold">{item.value.toLocaleString()}</div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
             );
         };
 
@@ -221,7 +251,6 @@
             const [errorMsg, setErrorMsg] = useState(null);
             const [successMsg, setSuccessMsg] = useState(null); // 新增成功訊息
             const [isDragging, setIsDragging] = useState(false);
-            // 新增：選取狀態
             const [selectedIds, setSelectedIds] = useState(new Set());
             const fileInputRef = useRef(null);
 
@@ -244,7 +273,6 @@
                         return String(dateA).localeCompare(String(dateB));
                     });
                     setDbData(data);
-                    // 清空選取狀態
                     setSelectedIds(new Set());
                 } catch (error) {
                     console.error("Error fetching documents: ", error);
@@ -263,7 +291,7 @@
                 if (!file) return;
                 
                 if (!(file instanceof Blob)) {
-                    alert("檔案格式錯誤：請確保拖曳的是有效的 Excel 檔案。");
+                    alert("檔案格式錯誤：請確保拖曳的是有效的 Excel檔案。");
                     return;
                 }
 
@@ -300,13 +328,10 @@
 
                         const jsonData = window.XLSX.utils.sheet_to_json(ws, { range: headerRowIndex });
                         
-                        // 修正：移除重複的欄位 (例如 "訂單號碼_1")
                         const processedJson = jsonData.map(row => {
                             const newRow = { ...row };
-                            // 移除 SheetJS 自動產生的重複後綴欄位
                             Object.keys(newRow).forEach(key => {
                                 if (key.endsWith('_1') && newRow[key.replace('_1', '')] !== undefined) {
-                                    // 如果是重複的欄位 (例如 訂單號碼_1 且 訂單號碼 存在)，則移除
                                     delete newRow[key];
                                 }
                             });
@@ -339,9 +364,7 @@
 
             const handleFileSelect = (e) => {
                 const file = e.target.files[0];
-                if (file) {
-                    processFile(file);
-                }
+                if (file) processFile(file);
                 e.target.value = null; 
             };
 
@@ -416,7 +439,6 @@
                 }
             };
 
-            // 刪除單筆資料
             const handleDelete = async (id) => {
                 if (!confirm("確定要刪除這筆資料嗎？")) return;
                 setLoading(true);
@@ -424,9 +446,7 @@
                     await deleteDoc(doc(db, 'orders', id));
                     setSuccessMsg("刪除成功！");
                     setTimeout(() => setSuccessMsg(null), 3000);
-                    // 本地更新 (比重新 fetch 快)
                     setDbData(prev => prev.filter(item => item.id !== id));
-                    // 移除選取狀態
                     const newSelected = new Set(selectedIds);
                     newSelected.delete(id);
                     setSelectedIds(newSelected);
@@ -438,7 +458,6 @@
                 }
             };
 
-            // 刪除全部資料
             const handleDeleteAll = async () => {
                 if (!confirm("警告：確定要清空所有訂單資料嗎？此動作無法復原！")) return;
                 setLoading(true);
@@ -474,52 +493,6 @@
                 }
             };
 
-            const filteredData = useMemo(() => {
-                return dbData.filter(item => {
-                    const searchStr = searchTerm.toLowerCase();
-                    const getValue = (obj, keyName) => {
-                        const key = Object.keys(obj).find(k => k.trim() === keyName);
-                        return key ? obj[key] : '';
-                    };
-
-                    const orderNo = getValue(item, '訂單號碼');
-                    const clientName = getValue(item, '客戶名稱');
-                    const productName = getValue(item, '公司品名');
-                    const clientOrderNo = getValue(item, '客戶單號');
-                    const purOrderNo = getValue(item, '客戶(採購)單號');
-
-                    return (
-                        (orderNo && String(orderNo).toLowerCase().includes(searchStr)) ||
-                        (clientName && String(clientName).toLowerCase().includes(searchStr)) ||
-                        (productName && String(productName).toLowerCase().includes(searchStr)) ||
-                        (clientOrderNo && String(clientOrderNo).toLowerCase().includes(searchStr)) ||
-                        (purOrderNo && String(purOrderNo).toLowerCase().includes(searchStr))
-                    );
-                });
-            }, [dbData, searchTerm]);
-
-            // 全選/取消全選
-            const handleSelectAll = (e) => {
-                if (e.target.checked) {
-                    const allIds = new Set(filteredData.map(item => item.id));
-                    setSelectedIds(allIds);
-                } else {
-                    setSelectedIds(new Set());
-                }
-            };
-
-            // 選取單筆
-            const handleSelectOne = (id) => {
-                const newSelected = new Set(selectedIds);
-                if (newSelected.has(id)) {
-                    newSelected.delete(id);
-                } else {
-                    newSelected.add(id);
-                }
-                setSelectedIds(newSelected);
-            };
-
-            // 刪除選取
             const handleDeleteSelected = async () => {
                 if (selectedIds.size === 0) return;
                 if (!confirm(`確定要刪除已選取的 ${selectedIds.size} 筆資料嗎？`)) return;
@@ -545,112 +518,54 @@
                 }
             };
 
-            // 匯出選取
+            const filteredData = useMemo(() => {
+                return dbData.filter(item => {
+                    const searchStr = searchTerm.toLowerCase();
+                    const getValue = (obj, keyName) => {
+                        const key = Object.keys(obj).find(k => k.trim() === keyName);
+                        return key ? obj[key] : '';
+                    };
+
+                    const orderNo = getValue(item, '訂單號碼');
+                    const clientName = getValue(item, '客戶名稱');
+                    const productName = getValue(item, '公司品名');
+                    const clientOrderNo = getValue(item, '客戶單號');
+                    const purOrderNo = getValue(item, '客戶(採購)單號');
+
+                    return (
+                        (orderNo && String(orderNo).toLowerCase().includes(searchStr)) ||
+                        (clientName && String(clientName).toLowerCase().includes(searchStr)) ||
+                        (productName && String(productName).toLowerCase().includes(searchStr)) ||
+                        (clientOrderNo && String(clientOrderNo).toLowerCase().includes(searchStr)) ||
+                        (purOrderNo && String(purOrderNo).toLowerCase().includes(searchStr))
+                    );
+                });
+            }, [dbData, searchTerm]);
+
+            const handleSelectAll = (e) => {
+                if (e.target.checked) {
+                    const allIds = new Set(filteredData.map(item => item.id));
+                    setSelectedIds(allIds);
+                } else {
+                    setSelectedIds(new Set());
+                }
+            };
+
+            const handleSelectOne = (id) => {
+                const newSelected = new Set(selectedIds);
+                if (newSelected.has(id)) newSelected.delete(id);
+                else newSelected.add(id);
+                setSelectedIds(newSelected);
+            };
+
             const handleExportSelected = () => {
                 if (selectedIds.size === 0) {
                     alert("請先選取資料");
                     return;
                 }
-                
                 const selectedData = dbData.filter(item => selectedIds.has(item.id));
-                
-                // Reuse logic from handleExportProcessed
-                const getValue = (obj, keyName) => {
-                    const key = Object.keys(obj).find(k => k.trim() === keyName);
-                    return key ? obj[key] : '';
-                };
-
-                const getQty = (obj) => {
-                    const key = Object.keys(obj).find(k => k.trim().includes('未交量'));
-                    let val = key ? obj[key] : 0;
-                    if (typeof val === 'string') val = val.replace(/,/g, '');
-                    return parseFloat(val);
-                };
-
-                selectedData.sort((a, b) => {
-                    const dateA = getValue(a, '交貨日期') || '9999-12-31';
-                    const dateB = getValue(b, '交貨日期') || '9999-12-31';
-                    return String(dateA).localeCompare(String(dateB));
-                });
-
-                const exportData = selectedData.map(row => ({
-                    '交貨日期': getValue(row, '交貨日期'),
-                    '訂單號碼': getValue(row, '訂單號碼'),
-                    '客戶單號': getValue(row, '客戶單號') || getValue(row, '客戶(採購)單號') || '',
-                    '客戶名稱': getValue(row, '客戶名稱'),
-                    '品牌': getValue(row, '品牌') || '',
-                    '公司品名': getValue(row, '公司品名'),
-                    '成份': getValue(row, '成份') || '',
-                    '加工方式': getValue(row, '加工方式') || '',
-                    '中文顏色': getValue(row, '中文顏色') || getValue(row, '顏色'),
-                    '英文顏色': getValue(row, '英文顏色') || '',
-                    '未交量': getQty(row),
-                    '鞋名': getValue(row, '鞋名') || '',
-                    '季節': getValue(row, '季節(出貨)') || '',
-                    '備註': getValue(row, '備註(出貨)') || ''
-                }));
-
-                const ws = window.XLSX.utils.json_to_sheet(exportData);
-                const wscols = [
-                    {wch: 12}, {wch: 15}, {wch: 18}, {wch: 20}, {wch: 10}, 
-                    {wch: 25}, {wch: 30}, {wch: 15}, {wch: 15}, {wch: 15}, 
-                    {wch: 10}, {wch: 15}, {wch: 10}, {wch: 30}
-                ];
-                ws['!cols'] = wscols;
-
-                const wb = window.XLSX.utils.book_new();
-                window.XLSX.utils.book_append_sheet(wb, ws, "選取匯出");
-                
-                const dateStr = new Date().toISOString().split('T')[0];
-                const filename = `選取匯出_${dateStr}.xlsx`;
-
-                window.XLSX.writeFile(wb, filename);
+                exportData(selectedData, "選取匯出");
             };
-
-            const stats = useMemo(() => {
-                const totalOrders = dbData.length;
-                const totalUnfulfilled = dbData.reduce((acc, curr) => {
-                    const key = Object.keys(curr).find(k => k.trim().includes('未交量'));
-                    let val = key ? curr[key] : 0;
-                    if (typeof val === 'string') val = val.replace(/,/g, '');
-                    const qty = parseFloat(val);
-                    return acc + (isNaN(qty) ? 0 : qty);
-                }, 0);
-                const uniqueCustomers = new Set(dbData.map(d => {
-                    const key = Object.keys(d).find(k => k.trim() === '客戶名稱');
-                    return key ? d[key] : '';
-                })).size;
-                return { totalOrders, totalUnfulfilled, uniqueCustomers };
-            }, [dbData]);
-
-            // 動態取得所有欄位名稱 (用於列表完整顯示)
-            const allTableHeaders = useMemo(() => {
-                if (dbData.length === 0) return [];
-                // 收集所有資料出現過的所有 Key
-                const keys = new Set();
-                // 為了效能，只取前 50 筆來偵測 Key，通常足夠。若要非常精確可跑全部。
-                dbData.slice(0, 50).forEach(row => {
-                    Object.keys(row).forEach(k => {
-                        if (k !== 'id' && k !== 'uploadedAt' && k !== 'uploadedBy') {
-                            keys.add(k);
-                        }
-                    });
-                });
-                
-                // 排序欄位：將重要欄位排在前面
-                const priorityKeys = ['交貨日期', '訂單號碼', '客戶名稱', '公司品名', '顏色', '未交量'];
-                const sortedKeys = Array.from(keys).sort((a, b) => {
-                    const idxA = priorityKeys.findIndex(pk => a.includes(pk));
-                    const idxB = priorityKeys.findIndex(pk => b.includes(pk));
-                    
-                    if (idxA !== -1 && idxB !== -1) return idxA - idxB;
-                    if (idxA !== -1) return -1;
-                    if (idxB !== -1) return 1;
-                    return a.localeCompare(b, 'zh-TW');
-                });
-                
-                return sortedKeys;
-            }, [dbData]);
 
             const handleExportProcessed = () => {
                 if (filteredData.length === 0) {
@@ -658,11 +573,6 @@
                     return;
                 }
                 
-                const getValue = (obj, keyName) => {
-                    const key = Object.keys(obj).find(k => k.trim() === keyName);
-                    return key ? obj[key] : '';
-                };
-
                 const getQty = (obj) => {
                     const key = Object.keys(obj).find(k => k.trim().includes('未交量'));
                     let val = key ? obj[key] : 0;
@@ -679,14 +589,29 @@
                     alert("篩選後沒有未交量 > 0 的訂單，無需匯出");
                     return;
                 }
+                exportData(validOrders, "整理後未交明細");
+            };
 
-                validOrders.sort((a, b) => {
+            // 通用匯出邏輯
+            const exportData = (data, sheetName) => {
+                const getValue = (obj, keyName) => {
+                    const key = Object.keys(obj).find(k => k.trim() === keyName);
+                    return key ? obj[key] : '';
+                };
+                const getQty = (obj) => {
+                    const key = Object.keys(obj).find(k => k.trim().includes('未交量'));
+                    let val = key ? obj[key] : 0;
+                    if (typeof val === 'string') val = val.replace(/,/g, '');
+                    return parseFloat(val);
+                };
+
+                data.sort((a, b) => {
                     const dateA = getValue(a, '交貨日期') || '9999-12-31';
                     const dateB = getValue(b, '交貨日期') || '9999-12-31';
                     return String(dateA).localeCompare(String(dateB));
                 });
 
-                const exportData = validOrders.map(row => ({
+                const formattedData = data.map(row => ({
                     '交貨日期': getValue(row, '交貨日期'),
                     '訂單號碼': getValue(row, '訂單號碼'),
                     '客戶單號': getValue(row, '客戶單號') || getValue(row, '客戶(採購)單號') || '',
@@ -703,7 +628,7 @@
                     '備註': getValue(row, '備註(出貨)') || ''
                 }));
 
-                const ws = window.XLSX.utils.json_to_sheet(exportData);
+                const ws = window.XLSX.utils.json_to_sheet(formattedData);
                 const wscols = [
                     {wch: 12}, {wch: 15}, {wch: 18}, {wch: 20}, {wch: 10}, 
                     {wch: 25}, {wch: 30}, {wch: 15}, {wch: 15}, {wch: 15}, 
@@ -712,19 +637,113 @@
                 ws['!cols'] = wscols;
 
                 const wb = window.XLSX.utils.book_new();
-                window.XLSX.utils.book_append_sheet(wb, ws, "整理後未交明細");
+                window.XLSX.utils.book_append_sheet(wb, ws, sheetName);
                 
                 const dateStr = new Date().toISOString().split('T')[0];
-                const filename = `未交總表-整理後_${dateStr}.xlsx`;
+                const filename = `${sheetName}_${dateStr}.xlsx`;
 
                 window.XLSX.writeFile(wb, filename);
             };
 
-            // 取得所有可能的欄位名稱 (從第一筆資料，用於匯入預覽)
-            const importHeaders = useMemo(() => {
-                if (fileData.length === 0) return [];
-                return Object.keys(fileData[0]);
-            }, [fileData]);
+            // --- 統計與分析邏輯 ---
+            const stats = useMemo(() => {
+                const totalOrders = dbData.length;
+                const today = new Date().toISOString().split('T')[0];
+                
+                // 輔助函式：安全取得值
+                const getValue = (obj, keyName) => {
+                    const key = Object.keys(obj).find(k => k.trim() === keyName);
+                    return key ? obj[key] : '';
+                };
+                const getQty = (obj) => {
+                    const key = Object.keys(obj).find(k => k.trim().includes('未交量'));
+                    let val = key ? obj[key] : 0;
+                    if (typeof val === 'string') val = val.replace(/,/g, '');
+                    return parseFloat(val) || 0;
+                };
+
+                let totalUnfulfilled = 0;
+                let overdueCount = 0;
+                const customersMap = {};
+                const monthlyMap = {};
+
+                dbData.forEach(d => {
+                    // 計算未交量
+                    const qty = getQty(d);
+                    totalUnfulfilled += qty;
+
+                    // 計算逾期
+                    const date = getValue(d, '交貨日期');
+                    if (date && date < today && qty > 0) {
+                        overdueCount++;
+                    }
+
+                    // 客戶分佈
+                    const client = getValue(d, '客戶名稱') || 'Unknown';
+                    customersMap[client] = (customersMap[client] || 0) + qty;
+
+                    // 月份分佈 (YYYY-MM)
+                    if (date && date.length >= 7) {
+                        const month = date.substring(0, 7);
+                        monthlyMap[month] = (monthlyMap[month] || 0) + qty;
+                    }
+                });
+
+                // 排序客戶 (Top 5)
+                const topCustomers = Object.entries(customersMap)
+                    .map(([label, value]) => ({ label, value }))
+                    .sort((a, b) => b.value - a.value)
+                    .slice(0, 5);
+
+                // 排序月份 (近期 6 個月)
+                const timeline = Object.entries(monthlyMap)
+                    .map(([label, value]) => ({ label, value }))
+                    .sort((a, b) => a.label.localeCompare(b.label))
+                    .filter(item => item.label >= today.substring(0, 7) || item.label >= '2024-01') // 簡單過濾舊資料
+                    .slice(0, 6);
+
+                // 即將出貨/逾期清單 (Top 5)
+                const urgentList = dbData
+                    .filter(d => getQty(d) > 0)
+                    .sort((a, b) => {
+                        const da = getValue(a, '交貨日期') || '9999';
+                        const db = getValue(b, '交貨日期') || '9999';
+                        return da.localeCompare(db);
+                    })
+                    .slice(0, 5);
+
+                return { 
+                    totalOrders, 
+                    totalUnfulfilled, 
+                    uniqueCustomers: Object.keys(customersMap).length,
+                    overdueCount,
+                    topCustomers,
+                    timeline,
+                    urgentList
+                };
+            }, [dbData]);
+
+            // 動態取得所有欄位名稱
+            const allTableHeaders = useMemo(() => {
+                if (dbData.length === 0) return [];
+                const keys = new Set();
+                dbData.slice(0, 50).forEach(row => {
+                    Object.keys(row).forEach(k => {
+                        if (k !== 'id' && k !== 'uploadedAt' && k !== 'uploadedBy') keys.add(k);
+                    });
+                });
+                
+                const priorityKeys = ['交貨日期', '訂單號碼', '客戶名稱', '公司品名', '顏色', '未交量'];
+                const sortedKeys = Array.from(keys).sort((a, b) => {
+                    const idxA = priorityKeys.findIndex(pk => a.includes(pk));
+                    const idxB = priorityKeys.findIndex(pk => b.includes(pk));
+                    if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+                    if (idxA !== -1) return -1;
+                    if (idxB !== -1) return 1;
+                    return a.localeCompare(b, 'zh-TW');
+                });
+                return sortedKeys;
+            }, [dbData]);
 
             return (
                 <div className="flex flex-col h-full w-full">
@@ -733,55 +752,15 @@
                         <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-6 rounded-r shadow-sm">
                             <div className="flex items-start">
                                 <div className="flex-shrink-0"><Icon name="Lock" className="h-5 w-5 text-red-500" /></div>
-                                <div className="ml-3">
-                                    <h3 className="text-sm font-medium text-red-800">錯誤</h3>
-                                    <div className="mt-2 text-sm text-red-700"><p>{errorMsg}</p></div>
-                                </div>
+                                <div className="ml-3"><h3 className="text-sm font-medium text-red-800">錯誤</h3><div className="mt-2 text-sm text-red-700"><p>{errorMsg}</p></div></div>
                             </div>
                         </div>
                     )}
-                    
                     {successMsg && (
                         <div className="bg-green-50 border-l-4 border-green-500 p-4 mb-6 rounded-r shadow-sm animate-fade-in">
                             <div className="flex items-start">
                                 <div className="flex-shrink-0"><Icon name="CheckCircle" className="h-5 w-5 text-green-500" /></div>
-                                <div className="ml-3">
-                                    <h3 className="text-sm font-medium text-green-800">成功</h3>
-                                    <div className="mt-2 text-sm text-green-700"><p>{successMsg}</p></div>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Stats */}
-                    {activeTab === 'dashboard' && (
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                                <div className="flex items-center justify-between">
-                                    <div>
-                                        <p className="text-sm font-medium text-slate-500">總未交訂單數</p>
-                                        <p className="text-3xl font-bold text-slate-800 mt-2">{stats.totalOrders}</p>
-                                    </div>
-                                    <div className="bg-blue-50 p-3 rounded-lg"><Icon name="FileSpreadsheet" className="w-6 h-6 text-blue-600" /></div>
-                                </div>
-                            </div>
-                            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                                <div className="flex items-center justify-between">
-                                    <div>
-                                        <p className="text-sm font-medium text-slate-500">未交總數量 (Yds)</p>
-                                        <p className="text-3xl font-bold text-emerald-600 mt-2">{stats.totalUnfulfilled.toLocaleString(undefined, { maximumFractionDigits: 1 })}</p>
-                                    </div>
-                                    <div className="bg-emerald-50 p-3 rounded-lg"><Icon name="TrendingUp" className="w-6 h-6 text-emerald-600" /></div>
-                                </div>
-                            </div>
-                            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                                <div className="flex items-center justify-between">
-                                    <div>
-                                        <p className="text-sm font-medium text-slate-500">相關客戶數</p>
-                                        <p className="text-3xl font-bold text-purple-600 mt-2">{stats.uniqueCustomers}</p>
-                                    </div>
-                                    <div className="bg-purple-50 p-3 rounded-lg"><Icon name="Truck" className="w-6 h-6 text-purple-600" /></div>
-                                </div>
+                                <div className="ml-3"><h3 className="text-sm font-medium text-green-800">成功</h3><div className="mt-2 text-sm text-green-700"><p>{successMsg}</p></div></div>
                             </div>
                         </div>
                     )}
@@ -796,11 +775,77 @@
                     {/* Content */}
                     <div className="bg-white rounded-xl shadow-sm border border-slate-200 min-h-[500px] overflow-hidden">
                         {activeTab === 'dashboard' && (
-                            <div className="p-8 flex flex-col items-center justify-center text-center h-full">
-                                <div className="max-w-md">
-                                    <h3 className="text-lg font-semibold text-slate-800 mb-2">歡迎使用生管系統</h3>
-                                    <p className="text-slate-500 mb-6">目前系統中有 {stats.totalOrders} 筆未交訂單。</p>
-                                    <button onClick={() => setActiveTab('list')} className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors">查看詳細訂單</button>
+                            <div className="p-6 bg-slate-50 h-full overflow-y-auto">
+                                {/* Top Stats Row */}
+                                <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
+                                    <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex justify-between items-center">
+                                        <div><p className="text-sm text-slate-500 mb-1">未交訂單總數</p><p className="text-2xl font-bold text-slate-800">{stats.totalOrders}</p></div>
+                                        <div className="bg-blue-50 p-3 rounded-lg"><Icon name="FileSpreadsheet" className="w-6 h-6 text-blue-600" /></div>
+                                    </div>
+                                    <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex justify-between items-center">
+                                        <div><p className="text-sm text-slate-500 mb-1">未交總量 (Yds)</p><p className="text-2xl font-bold text-emerald-600">{stats.totalUnfulfilled.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p></div>
+                                        <div className="bg-emerald-50 p-3 rounded-lg"><Icon name="TrendingUp" className="w-6 h-6 text-emerald-600" /></div>
+                                    </div>
+                                    <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex justify-between items-center">
+                                        <div><p className="text-sm text-slate-500 mb-1">逾期訂單</p><p className="text-2xl font-bold text-red-600">{stats.overdueCount}</p></div>
+                                        <div className="bg-red-50 p-3 rounded-lg"><Icon name="Bell" className="w-6 h-6 text-red-600" /></div>
+                                    </div>
+                                    <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex justify-between items-center">
+                                        <div><p className="text-sm text-slate-500 mb-1">客戶家數</p><p className="text-2xl font-bold text-purple-600">{stats.uniqueCustomers}</p></div>
+                                        <div className="bg-purple-50 p-3 rounded-lg"><Icon name="Truck" className="w-6 h-6 text-purple-600" /></div>
+                                    </div>
+                                </div>
+
+                                {/* Middle Charts Row */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                                    <SimpleBarChart data={stats.topCustomers} title="前 5 大未交客戶 (數量)" colorClass="bg-blue-500" />
+                                    <SimpleBarChart data={stats.timeline} title="交期波段預估 (月份)" colorClass="bg-emerald-500" />
+                                </div>
+
+                                {/* Bottom List Row */}
+                                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                                    <div className="flex justify-between items-center mb-4">
+                                        <h3 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
+                                            <Icon name="Calendar" className="w-5 h-5 text-slate-500" />
+                                            即將到期 / 逾期急件預覽
+                                        </h3>
+                                        <button onClick={() => setActiveTab('list')} className="text-sm text-blue-600 hover:underline">查看全部 &rarr;</button>
+                                    </div>
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-sm text-left text-slate-600">
+                                            <thead className="bg-slate-50 text-slate-700">
+                                                <tr>
+                                                    <th className="px-4 py-2">交期</th>
+                                                    <th className="px-4 py-2">訂單號碼</th>
+                                                    <th className="px-4 py-2">客戶</th>
+                                                    <th className="px-4 py-2 text-right">未交量</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {stats.urgentList.length > 0 ? stats.urgentList.map((row, idx) => {
+                                                    const date = Object.values(row).find(v => String(v).match(/^\d{4}-\d{2}-\d{2}$/));
+                                                    const today = new Date().toISOString().split('T')[0];
+                                                    const isOverdue = date < today;
+                                                    const qtyKey = Object.keys(row).find(k => k.includes('未交量'));
+                                                    
+                                                    return (
+                                                        <tr key={idx} className="border-b">
+                                                            <td className="px-4 py-2">
+                                                                <span className={`px-2 py-1 rounded text-xs font-bold ${isOverdue ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}>
+                                                                    {date || '-'}
+                                                                </span>
+                                                            </td>
+                                                            <td className="px-4 py-2 font-medium">{row['訂單號碼'] || '-'}</td>
+                                                            <td className="px-4 py-2">{row['客戶名稱'] || '-'}</td>
+                                                            <td className="px-4 py-2 text-right font-bold">{qtyKey ? row[qtyKey] : 0}</td>
+                                                        </tr>
+                                                    );
+                                                }) : (
+                                                    <tr><td colSpan="4" className="px-4 py-4 text-center text-slate-400">目前沒有急件資料</td></tr>
+                                                )}
+                                            </tbody>
+                                        </table>
+                                    </div>
                                 </div>
                             </div>
                         )}
@@ -1053,7 +1098,7 @@
                             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
                                 <div className="flex items-center gap-2">
                                     <div className="bg-blue-600 p-1.5 rounded-lg"><Icon name="Package" className="w-5 h-5 text-white" /></div>
-                                    <h1 className="text-xl font-bold text-slate-800 tracking-tight">鎰呈行生管系統 <span className="text-xs font-normal text-slate-500 ml-2">v3.4 (Admin)</span></h1>
+                                    <h1 className="text-xl font-bold text-slate-800 tracking-tight">鎰呈行生管系統 <span className="text-xs font-normal text-slate-500 ml-2">v3.5 (Admin)</span></h1>
                                 </div>
                                 <div className="flex items-center gap-4">
                                     <div className="hidden md:flex text-sm text-slate-500">使用者: Admin</div>
