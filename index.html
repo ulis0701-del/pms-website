@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>鎰呈行生管系統 v3.3 (Admin版-移除重複欄位)</title>
+    <title>鎰呈行生管系統 v3.4 (Admin版-選取與批量操作)</title>
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -62,6 +62,12 @@
         tr:hover .action-col {
             background-color: #f8fafc; /* slate-50 */
         }
+        /* Checkbox 樣式優化 */
+        input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+        }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-800">
@@ -87,7 +93,7 @@
             query, 
             doc, 
             writeBatch, 
-            deleteDoc, // 新增刪除功能
+            deleteDoc, 
             Timestamp 
         } from 'firebase/firestore';
 
@@ -215,6 +221,8 @@
             const [errorMsg, setErrorMsg] = useState(null);
             const [successMsg, setSuccessMsg] = useState(null); // 新增成功訊息
             const [isDragging, setIsDragging] = useState(false);
+            // 新增：選取狀態
+            const [selectedIds, setSelectedIds] = useState(new Set());
             const fileInputRef = useRef(null);
 
             useEffect(() => {
@@ -236,6 +244,8 @@
                         return String(dateA).localeCompare(String(dateB));
                     });
                     setDbData(data);
+                    // 清空選取狀態
+                    setSelectedIds(new Set());
                 } catch (error) {
                     console.error("Error fetching documents: ", error);
                     if (error.code === 'permission-denied') {
@@ -416,6 +426,10 @@
                     setTimeout(() => setSuccessMsg(null), 3000);
                     // 本地更新 (比重新 fetch 快)
                     setDbData(prev => prev.filter(item => item.id !== id));
+                    // 移除選取狀態
+                    const newSelected = new Set(selectedIds);
+                    newSelected.delete(id);
+                    setSelectedIds(newSelected);
                 } catch (error) {
                     console.error("Delete error: ", error);
                     alert("刪除失敗：" + error.message);
@@ -432,7 +446,6 @@
                     const q = query(collection(db, 'orders'));
                     const snapshot = await getDocs(q);
                     
-                    // Firestore 批量刪除限制為 500 筆，需分批處理
                     const batchSize = 400;
                     const chunks = [];
                     const docs = snapshot.docs;
@@ -450,6 +463,7 @@
                     }
                     
                     setDbData([]);
+                    setSelectedIds(new Set());
                     setSuccessMsg(`已成功清空 ${docs.length} 筆資料！`);
                     setTimeout(() => setSuccessMsg(null), 3000);
                 } catch (error) {
@@ -483,6 +497,115 @@
                     );
                 });
             }, [dbData, searchTerm]);
+
+            // 全選/取消全選
+            const handleSelectAll = (e) => {
+                if (e.target.checked) {
+                    const allIds = new Set(filteredData.map(item => item.id));
+                    setSelectedIds(allIds);
+                } else {
+                    setSelectedIds(new Set());
+                }
+            };
+
+            // 選取單筆
+            const handleSelectOne = (id) => {
+                const newSelected = new Set(selectedIds);
+                if (newSelected.has(id)) {
+                    newSelected.delete(id);
+                } else {
+                    newSelected.add(id);
+                }
+                setSelectedIds(newSelected);
+            };
+
+            // 刪除選取
+            const handleDeleteSelected = async () => {
+                if (selectedIds.size === 0) return;
+                if (!confirm(`確定要刪除已選取的 ${selectedIds.size} 筆資料嗎？`)) return;
+                
+                setLoading(true);
+                try {
+                    const batch = writeBatch(db);
+                    selectedIds.forEach(id => {
+                        const docRef = doc(db, 'orders', id);
+                        batch.delete(docRef);
+                    });
+                    await batch.commit();
+                    
+                    setDbData(prev => prev.filter(item => !selectedIds.has(item.id)));
+                    setSelectedIds(new Set());
+                    setSuccessMsg(`已成功刪除 ${selectedIds.size} 筆資料！`);
+                    setTimeout(() => setSuccessMsg(null), 3000);
+                } catch (error) {
+                    console.error("Batch delete error: ", error);
+                    alert("批量刪除失敗：" + error.message);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            // 匯出選取
+            const handleExportSelected = () => {
+                if (selectedIds.size === 0) {
+                    alert("請先選取資料");
+                    return;
+                }
+                
+                const selectedData = dbData.filter(item => selectedIds.has(item.id));
+                
+                // Reuse logic from handleExportProcessed
+                const getValue = (obj, keyName) => {
+                    const key = Object.keys(obj).find(k => k.trim() === keyName);
+                    return key ? obj[key] : '';
+                };
+
+                const getQty = (obj) => {
+                    const key = Object.keys(obj).find(k => k.trim().includes('未交量'));
+                    let val = key ? obj[key] : 0;
+                    if (typeof val === 'string') val = val.replace(/,/g, '');
+                    return parseFloat(val);
+                };
+
+                selectedData.sort((a, b) => {
+                    const dateA = getValue(a, '交貨日期') || '9999-12-31';
+                    const dateB = getValue(b, '交貨日期') || '9999-12-31';
+                    return String(dateA).localeCompare(String(dateB));
+                });
+
+                const exportData = selectedData.map(row => ({
+                    '交貨日期': getValue(row, '交貨日期'),
+                    '訂單號碼': getValue(row, '訂單號碼'),
+                    '客戶單號': getValue(row, '客戶單號') || getValue(row, '客戶(採購)單號') || '',
+                    '客戶名稱': getValue(row, '客戶名稱'),
+                    '品牌': getValue(row, '品牌') || '',
+                    '公司品名': getValue(row, '公司品名'),
+                    '成份': getValue(row, '成份') || '',
+                    '加工方式': getValue(row, '加工方式') || '',
+                    '中文顏色': getValue(row, '中文顏色') || getValue(row, '顏色'),
+                    '英文顏色': getValue(row, '英文顏色') || '',
+                    '未交量': getQty(row),
+                    '鞋名': getValue(row, '鞋名') || '',
+                    '季節': getValue(row, '季節(出貨)') || '',
+                    '備註': getValue(row, '備註(出貨)') || ''
+                }));
+
+                const ws = window.XLSX.utils.json_to_sheet(exportData);
+                const wscols = [
+                    {wch: 12}, {wch: 15}, {wch: 18}, {wch: 20}, {wch: 10}, 
+                    {wch: 25}, {wch: 30}, {wch: 15}, {wch: 15}, {wch: 15}, 
+                    {wch: 10}, {wch: 15}, {wch: 10}, {wch: 30}
+                ];
+                ws['!cols'] = wscols;
+
+                const wb = window.XLSX.utils.book_new();
+                window.XLSX.utils.book_append_sheet(wb, ws, "選取匯出");
+                
+                const dateStr = new Date().toISOString().split('T')[0];
+                const filename = `選取匯出_${dateStr}.xlsx`;
+
+                window.XLSX.writeFile(wb, filename);
+            };
 
             const stats = useMemo(() => {
                 const totalOrders = dbData.length;
@@ -761,20 +884,43 @@
                                     <div className="flex items-center gap-2">
                                         <button onClick={fetchOrders} className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg" title="重新整理"><Icon name="RefreshCw" className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} /></button>
                                         
-                                        {/* 新增：全部刪除按鈕 */}
-                                        <button 
-                                            onClick={handleDeleteAll}
-                                            className="flex items-center gap-2 px-3 py-2 bg-red-50 text-red-600 border border-red-200 rounded-lg hover:bg-red-100 transition-colors"
-                                            title="清空所有資料"
-                                        >
-                                            <Icon name="Trash2" className="w-4 h-4" />
-                                            <span className="hidden sm:inline">清空資料</span>
-                                        </button>
+                                        {/* 工具列：依據選取狀態切換按鈕 */}
+                                        {selectedIds.size > 0 ? (
+                                            <>
+                                                <button 
+                                                    onClick={handleDeleteSelected}
+                                                    className="flex items-center gap-2 px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 shadow-sm transition-colors"
+                                                    title={`刪除選取的 ${selectedIds.size} 筆資料`}
+                                                >
+                                                    <Icon name="Trash" className="w-4 h-4" />
+                                                    <span>刪除選取 ({selectedIds.size})</span>
+                                                </button>
+                                                <button 
+                                                    onClick={handleExportSelected}
+                                                    className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-sm transition-colors"
+                                                    title={`匯出選取的 ${selectedIds.size} 筆資料`}
+                                                >
+                                                    <Icon name="Download" className="w-4 h-4" />
+                                                    <span>匯出選取 ({selectedIds.size})</span>
+                                                </button>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <button 
+                                                    onClick={handleDeleteAll}
+                                                    className="flex items-center gap-2 px-3 py-2 bg-red-50 text-red-600 border border-red-200 rounded-lg hover:bg-red-100 transition-colors"
+                                                    title="清空所有資料"
+                                                >
+                                                    <Icon name="Trash2" className="w-4 h-4" />
+                                                    <span className="hidden sm:inline">清空資料</span>
+                                                </button>
 
-                                        <button onClick={handleExportProcessed} className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 shadow-sm transition-colors" title="匯出整理後的報表">
-                                            <Icon name="FileOutput" className="w-4 h-4" />
-                                            <span>匯出整理後報表</span>
-                                        </button>
+                                                <button onClick={handleExportProcessed} className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 shadow-sm transition-colors" title="匯出所有整理後的報表">
+                                                    <Icon name="FileOutput" className="w-4 h-4" />
+                                                    <span>匯出整理後報表</span>
+                                                </button>
+                                            </>
+                                        )}
                                     </div>
                                 </div>
                                 <div className="overflow-x-auto flex-1 table-container">
@@ -787,6 +933,14 @@
                                         <table className="w-full text-sm text-left text-slate-600">
                                             <thead className="text-xs text-slate-700 uppercase bg-slate-100 sticky top-0">
                                                 <tr>
+                                                    {/* 選取欄位 */}
+                                                    <th className="px-4 py-3 border-b border-slate-200 w-12 text-center">
+                                                        <input 
+                                                            type="checkbox" 
+                                                            onChange={handleSelectAll}
+                                                            checked={filteredData.length > 0 && selectedIds.size === filteredData.length}
+                                                        />
+                                                    </th>
                                                     {/* 動態渲染所有標題 */}
                                                     {allTableHeaders.map((header, idx) => (
                                                         <th key={idx} className="px-4 py-3 border-b border-slate-200 whitespace-nowrap min-w-[120px]">
@@ -801,7 +955,15 @@
                                             </thead>
                                             <tbody>
                                                 {filteredData.map((row) => (
-                                                    <tr key={row.id} className="bg-white border-b hover:bg-slate-50 transition-colors group">
+                                                    <tr key={row.id} className={`border-b hover:bg-slate-50 transition-colors group ${selectedIds.has(row.id) ? 'bg-blue-50' : 'bg-white'}`}>
+                                                        {/* 選取 Checkbox */}
+                                                        <td className="px-4 py-3 border-b border-slate-100 text-center">
+                                                            <input 
+                                                                type="checkbox" 
+                                                                checked={selectedIds.has(row.id)}
+                                                                onChange={() => handleSelectOne(row.id)}
+                                                            />
+                                                        </td>
                                                         {/* 動態渲染所有儲存格 */}
                                                         {allTableHeaders.map((header, vIdx) => {
                                                             let content = row[header];
@@ -839,7 +1001,10 @@
                                         </table>
                                     )}
                                 </div>
-                                <div className="p-2 border-t border-slate-200 bg-slate-50 text-xs text-slate-500 text-right">顯示 {filteredData.length} 筆資料</div>
+                                <div className="p-2 border-t border-slate-200 bg-slate-50 text-xs text-slate-500 text-right">
+                                    {selectedIds.size > 0 && <span className="mr-4 text-blue-600 font-medium">已選取 {selectedIds.size} 筆</span>}
+                                    顯示 {filteredData.length} 筆資料
+                                </div>
                             </div>
                         )}
                     </div>
@@ -888,7 +1053,7 @@
                             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
                                 <div className="flex items-center gap-2">
                                     <div className="bg-blue-600 p-1.5 rounded-lg"><Icon name="Package" className="w-5 h-5 text-white" /></div>
-                                    <h1 className="text-xl font-bold text-slate-800 tracking-tight">鎰呈行生管系統 <span className="text-xs font-normal text-slate-500 ml-2">v3.2 (Admin)</span></h1>
+                                    <h1 className="text-xl font-bold text-slate-800 tracking-tight">鎰呈行生管系統 <span className="text-xs font-normal text-slate-500 ml-2">v3.4 (Admin)</span></h1>
                                 </div>
                                 <div className="flex items-center gap-4">
                                     <div className="hidden md:flex text-sm text-slate-500">使用者: Admin</div>
