@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>鎰呈行生管系統 v4.0 (深度優化終極版)</title>
+    <title>鎰呈行訂單管理系統 v4.1 (深度優化終極版)</title>
     
     <!-- 
       系統架構說明:
@@ -228,7 +228,7 @@
                                 <img src="logo.png" alt="Logo" className="h-16 w-auto mx-auto object-contain" onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }} />
                                 <div className="hidden bg-blue-600 p-3 rounded-full mx-auto justify-center items-center" style={{ width: 'fit-content' }}><Icon name="Package" className="w-8 h-8 text-white" /></div>
                             </div>
-                            <h1 className="text-2xl font-bold text-slate-800">鎰呈行生管系統</h1>
+                            <h1 className="text-2xl font-bold text-slate-800">鎰呈行訂單管理系統</h1>
                             <p className="text-slate-500 text-sm mt-2">Yee Chain International Co., Ltd.</p>
                         </div>
                         {error && <div className="mb-4 p-3 bg-red-50 text-red-700 text-sm rounded-lg flex items-center gap-2"><Icon name="AlertCircle" className="w-4 h-4 flex-shrink-0" />{error}</div>}
@@ -401,6 +401,7 @@
                 } catch(e) { alert(e.message); } finally { setLoading(false); }
             };
 
+            // 修復：補回漏掉的 handleDeleteAll 函式
             const handleDeleteAll = async () => {
                 if (!confirm("警告：確定要清空所有訂單資料嗎？此動作無法復原！")) return;
                 setLoading(true);
@@ -652,7 +653,7 @@
                                         </tbody>
                                     </table>
                                 </div>
-                                <div className="p-2 border-t text-right text-xs text-slate-500">顯示 {filteredData.length} 筆</div>
+                                <div className="p-2 border-t text-right text-xs text-slate-500">顯示 {filteredData.length} 筆資料</div>
                             </div>
                         )}
                     </div>
@@ -686,7 +687,7 @@
                     <div className="min-h-screen bg-slate-50 flex flex-col">
                         {user && (
                             <header className="bg-white shadow-sm border-b sticky top-0 z-20 px-6 py-3 flex justify-between items-center">
-                                <div className="flex items-center gap-2 font-bold text-xl text-slate-800"><Icon name="Package" className="text-blue-600 w-6 h-6"/> 鎰呈行生管系統 v4.0</div>
+                                <div className="flex items-center gap-2 font-bold text-xl text-slate-800"><Icon name="Package" className="text-blue-600 w-6 h-6"/> 鎰呈行訂單管理系統 v4.1</div>
                                 <button onClick={()=>signOut(auth)} className="text-slate-500 hover:text-red-600"><Icon name="LogOut" className="w-5 h-5"/></button>
                             </header>
                         )}
