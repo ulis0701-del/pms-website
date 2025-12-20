@@ -202,7 +202,7 @@
                     <div className="space-y-4">
                         {data.map((item, idx) => (
                             <div key={idx} className="flex items-center gap-3 text-sm">
-                                <div className="w-24 truncate font-medium text-slate-600 text-right" title={item.label}>{item.label}</div>
+                                <div className="w-1/3 text-right font-medium text-slate-600 text-xs sm:text-sm leading-tight break-words pr-2">{item.label}</div>
                                 <div className="flex-1 h-3 bg-slate-100 rounded-full overflow-hidden">
                                     <div className={`h-full rounded-full ${colorClass} progress-bar`} style={{ width: `${(item.value / maxVal) * 100}%` }}></div>
                                 </div>
@@ -687,7 +687,11 @@
                     <div className="min-h-screen bg-slate-50 flex flex-col">
                         {user && (
                             <header className="bg-white shadow-sm border-b sticky top-0 z-20 px-6 py-3 flex justify-between items-center">
-                                <div className="flex items-center gap-2 font-bold text-xl text-slate-800"><Icon name="Package" className="text-blue-600 w-6 h-6"/> 鎰呈行訂單管理系統 v4.1</div>
+                                <div className="flex items-center gap-3 font-bold text-xl text-slate-800">
+                                    <img src="logo.png" alt="Logo" className="h-10 w-auto object-contain" onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'block'; }} />
+                                    <Icon name="Package" className="text-blue-600 w-8 h-8 hidden"/>
+                                    <span>鎰呈行訂單管理系統 v4.1</span>
+                                </div>
                                 <button onClick={()=>signOut(auth)} className="text-slate-500 hover:text-red-600"><Icon name="LogOut" className="w-5 h-5"/></button>
                             </header>
                         )}
