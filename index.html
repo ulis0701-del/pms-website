@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>鎰呈行生管系統 v3.5 (Admin版-戰情室儀表板)</title>
+    <title>鎰呈行生管系統 v3.6 (Admin版-Logo/Login修復)</title>
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -190,7 +190,7 @@
             const [password, setPassword] = useState('');
 
             const handleSubmit = (e) => {
-                e.preventDefault();
+                e.preventDefault(); // 防止表單預設提交刷新頁面
                 onAdminLogin(username, password);
             };
 
@@ -198,8 +198,20 @@
                 <div className="min-h-screen flex items-center justify-center bg-slate-50">
                     <div className="max-w-md w-full bg-white rounded-xl shadow-lg p-8 border border-slate-100">
                         <div className="flex flex-col items-center mb-8">
-                            <div className="bg-blue-600 p-3 rounded-full mb-4">
-                                <Icon name="Package" className="w-8 h-8 text-white" />
+                            {/* Logo 修改：嘗試載入 logo.png，失敗則顯示預設圖示 */}
+                            <div className="mb-4">
+                                <img 
+                                    src="logo.png" 
+                                    alt="鎰呈行 Logo" 
+                                    className="h-16 w-auto mx-auto object-contain"
+                                    onError={(e) => {
+                                        e.target.style.display = 'none';
+                                        e.target.nextSibling.style.display = 'flex';
+                                    }}
+                                />
+                                <div className="hidden bg-blue-600 p-3 rounded-full mx-auto justify-center items-center" style={{ width: 'fit-content' }}>
+                                    <Icon name="Package" className="w-8 h-8 text-white" />
+                                </div>
                             </div>
                             <h1 className="text-2xl font-bold text-slate-800">鎰呈行生管系統</h1>
                             <p className="text-slate-500 text-sm mt-2">Yee Chain International Co., Ltd.</p>
@@ -218,7 +230,14 @@
                                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                                         <Icon name="User" className="h-5 w-5 text-slate-400" />
                                     </div>
-                                    <input type="text" required className="block w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="請輸入帳號" value={username} onChange={(e) => setUsername(e.target.value)} />
+                                    <input 
+                                        type="text" 
+                                        required 
+                                        className="block w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" 
+                                        placeholder="請輸入帳號" 
+                                        value={username} 
+                                        onChange={(e) => setUsername(e.target.value)} 
+                                    />
                                 </div>
                             </div>
                             <div>
@@ -227,7 +246,14 @@
                                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                                         <Icon name="Key" className="h-5 w-5 text-slate-400" />
                                     </div>
-                                    <input type="password" required className="block w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="請輸入密碼" value={password} onChange={(e) => setPassword(e.target.value)} />
+                                    <input 
+                                        type="password" 
+                                        required 
+                                        className="block w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" 
+                                        placeholder="請輸入密碼" 
+                                        value={password} 
+                                        onChange={(e) => setPassword(e.target.value)} 
+                                    />
                                 </div>
                             </div>
                             <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors flex items-center justify-center gap-2 mt-6">
@@ -1076,7 +1102,7 @@
 
             const handleAdminLogin = async (username, password) => {
                 if (!auth) { setLoginError("系統錯誤：Firebase 未初始化"); return; }
-                if (username === 'admin' && password === 'admin') {
+                if (username === 'admin' && password === 'sweet405') {
                     try {
                         const userCredential = await signInAnonymously(auth);
                     } catch(e) {
@@ -1098,7 +1124,7 @@
                             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
                                 <div className="flex items-center gap-2">
                                     <div className="bg-blue-600 p-1.5 rounded-lg"><Icon name="Package" className="w-5 h-5 text-white" /></div>
-                                    <h1 className="text-xl font-bold text-slate-800 tracking-tight">鎰呈行生管系統 <span className="text-xs font-normal text-slate-500 ml-2">v3.5 (Admin)</span></h1>
+                                    <h1 className="text-xl font-bold text-slate-800 tracking-tight">鎰呈行生管系統 <span className="text-xs font-normal text-slate-500 ml-2">v3.6 (Admin)</span></h1>
                                 </div>
                                 <div className="flex items-center gap-4">
                                     <div className="hidden md:flex text-sm text-slate-500">使用者: Admin</div>
