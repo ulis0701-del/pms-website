@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>鎰呈行生管系統 v2.6 (Admin版)</title>
+    <title>鎰呈行生管系統 v2.7 (Admin版-修復匯入)</title>
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -239,29 +239,59 @@
                 const file = e.target.files[0];
                 if (!file) return;
 
+                // 檢查 SheetJS 是否載入
+                if (!window.XLSX) {
+                    alert("系統元件 (SheetJS) 尚未載入完成，請重新整理網頁後再試。");
+                    return;
+                }
+
                 const reader = new FileReader();
                 reader.onload = (evt) => {
-                    const bstr = evt.target.result;
-                    const wb = window.XLSX.read(bstr, { type: 'binary' });
-                    const wsname = wb.SheetNames[0];
-                    const ws = wb.Sheets[wsname];
-                    const rawData = window.XLSX.utils.sheet_to_json(ws, { header: 1 });
-                    
-                    let headerRowIndex = 0;
-                    for (let i = 0; i < Math.min(20, rawData.length); i++) {
-                        const rowStr = JSON.stringify(rawData[i]);
-                        if (rowStr && (rowStr.includes('訂單日期') || rowStr.includes('訂單號碼'))) {
-                            headerRowIndex = i;
-                            break;
+                    try {
+                        const data = new Uint8Array(evt.target.result);
+                        const wb = window.XLSX.read(data, { type: 'array' });
+                        const wsname = wb.SheetNames[0];
+                        const ws = wb.Sheets[wsname];
+                        const rawData = window.XLSX.utils.sheet_to_json(ws, { header: 1 });
+                        
+                        let headerRowIndex = -1;
+                        // 擴大搜尋範圍到 30 行，確保即使表頭很下面也能抓到
+                        for (let i = 0; i < Math.min(30, rawData.length); i++) {
+                            const rowStr = JSON.stringify(rawData[i]);
+                            if (rowStr && (rowStr.includes('訂單日期') || rowStr.includes('訂單號碼'))) {
+                                headerRowIndex = i;
+                                break;
+                            }
                         }
-                    }
 
-                    const data = window.XLSX.utils.sheet_to_json(ws, { range: headerRowIndex });
-                    const cleanData = data.filter(row => row['訂單號碼'] && row['訂單號碼'] !== '訂單號碼');
-                    setFileData(cleanData);
-                    setActiveTab('import');
+                        if (headerRowIndex === -1) {
+                            alert("無法自動偵測表頭！\n請確認 Excel 檔案前 30 列中包含「訂單日期」或「訂單號碼」欄位。");
+                            return;
+                        }
+
+                        const jsonData = window.XLSX.utils.sheet_to_json(ws, { range: headerRowIndex });
+                        const cleanData = jsonData.filter(row => row['訂單號碼'] && row['訂單號碼'] !== '訂單號碼');
+                        
+                        if (cleanData.length === 0) {
+                            alert("匯入失敗：找不到有效資料。\n請確認檔案內容是否正確，或欄位名稱是否包含「訂單號碼」。");
+                            return;
+                        }
+
+                        setFileData(cleanData);
+                        setActiveTab('import');
+                        // 提示用戶成功
+                        alert(`成功讀取 ${cleanData.length} 筆資料！\n請檢視下方預覽列表，確認無誤後點擊「確認匯入資料庫」。`);
+
+                    } catch (error) {
+                        console.error("Parsing error:", error);
+                        alert("解析 Excel 檔案發生錯誤：" + error.message);
+                    }
                 };
-                reader.readAsBinaryString(file);
+                
+                // 改用 readAsArrayBuffer 提高相容性
+                reader.readAsArrayBuffer(file);
+                // 重置 input 以便重複上傳同一檔案
+                e.target.value = null;
             };
 
             const saveToFirestore = async () => {
