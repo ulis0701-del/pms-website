@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>鎰呈行生管系統 v2.7 (Admin版-修復匯入)</title>
+    <title>鎰呈行生管系統 v2.8 (Admin版-完美匯入修復)</title>
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -41,7 +41,7 @@
 
     <!-- 主程式邏輯 -->
     <script type="text/babel" data-type="module">
-        import React, { useState, useEffect, useMemo } from 'react';
+        import React, { useState, useEffect, useMemo, useRef } from 'react';
         import { createRoot } from 'react-dom/client';
         import { initializeApp } from 'firebase/app';
         import { getAnalytics } from "firebase/analytics";
@@ -62,7 +62,6 @@
         } from 'firebase/firestore';
 
         // --- 設定區 (Configuration) ---
-        // 已填入您的 Firebase 設定
         const firebaseConfig = {
             apiKey: "AIzaSyB3ChFwdh00DHs5dKDmzGbICellr4p9KVQ",
             authDomain: "yeechain-pms.firebaseapp.com",
@@ -117,7 +116,7 @@
             );
         };
 
-        // --- 登入元件 (Updated for Admin Login) ---
+        // --- 登入元件 ---
         const Login = ({ onAdminLogin, error }) => {
             const [username, setUsername] = useState('');
             const [password, setPassword] = useState('');
@@ -151,45 +150,23 @@
                                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                                         <Icon name="User" className="h-5 w-5 text-slate-400" />
                                     </div>
-                                    <input
-                                        type="text"
-                                        required
-                                        className="block w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
-                                        placeholder="請輸入帳號"
-                                        value={username}
-                                        onChange={(e) => setUsername(e.target.value)}
-                                    />
+                                    <input type="text" required className="block w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="請輸入帳號" value={username} onChange={(e) => setUsername(e.target.value)} />
                                 </div>
                             </div>
-
                             <div>
                                 <label className="block text-sm font-medium text-slate-700 mb-1">密碼</label>
                                 <div className="relative">
                                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                                         <Icon name="Key" className="h-5 w-5 text-slate-400" />
                                     </div>
-                                    <input
-                                        type="password"
-                                        required
-                                        className="block w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
-                                        placeholder="請輸入密碼"
-                                        value={password}
-                                        onChange={(e) => setPassword(e.target.value)}
-                                    />
+                                    <input type="password" required className="block w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="請輸入密碼" value={password} onChange={(e) => setPassword(e.target.value)} />
                                 </div>
                             </div>
-
-                            <button
-                                type="submit"
-                                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors flex items-center justify-center gap-2 mt-6"
-                            >
+                            <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors flex items-center justify-center gap-2 mt-6">
                                 <span>登入系統</span>
                             </button>
                         </form>
-                        
-                        <p className="text-center text-xs text-slate-400 mt-6">
-                            內部系統 • 需授權存取
-                        </p>
+                        <p className="text-center text-xs text-slate-400 mt-6">內部系統 • 需授權存取</p>
                     </div>
                 </div>
             );
@@ -204,6 +181,8 @@
             const [activeTab, setActiveTab] = useState('dashboard');
             const [searchTerm, setSearchTerm] = useState('');
             const [errorMsg, setErrorMsg] = useState(null);
+            const [isDragging, setIsDragging] = useState(false); // 拖曳狀態
+            const fileInputRef = useRef(null); // 檔案輸入框參照
 
             useEffect(() => {
                 fetchOrders();
@@ -235,11 +214,9 @@
                 }
             };
 
-            const handleFileUpload = (e) => {
-                const file = e.target.files[0];
+            // 統一處理檔案讀取邏輯
+            const processFile = (file) => {
                 if (!file) return;
-
-                // 檢查 SheetJS 是否載入
                 if (!window.XLSX) {
                     alert("系統元件 (SheetJS) 尚未載入完成，請重新整理網頁後再試。");
                     return;
@@ -255,7 +232,6 @@
                         const rawData = window.XLSX.utils.sheet_to_json(ws, { header: 1 });
                         
                         let headerRowIndex = -1;
-                        // 擴大搜尋範圍到 30 行，確保即使表頭很下面也能抓到
                         for (let i = 0; i < Math.min(30, rawData.length); i++) {
                             const rowStr = JSON.stringify(rawData[i]);
                             if (rowStr && (rowStr.includes('訂單日期') || rowStr.includes('訂單號碼'))) {
@@ -273,25 +249,45 @@
                         const cleanData = jsonData.filter(row => row['訂單號碼'] && row['訂單號碼'] !== '訂單號碼');
                         
                         if (cleanData.length === 0) {
-                            alert("匯入失敗：找不到有效資料。\n請確認檔案內容是否正確，或欄位名稱是否包含「訂單號碼」。");
+                            alert("匯入失敗：找不到有效資料。");
                             return;
                         }
 
                         setFileData(cleanData);
                         setActiveTab('import');
-                        // 提示用戶成功
-                        alert(`成功讀取 ${cleanData.length} 筆資料！\n請檢視下方預覽列表，確認無誤後點擊「確認匯入資料庫」。`);
+                        alert(`成功讀取 ${cleanData.length} 筆資料！\n請確認無誤後點擊「確認匯入資料庫」。`);
 
                     } catch (error) {
                         console.error("Parsing error:", error);
                         alert("解析 Excel 檔案發生錯誤：" + error.message);
                     }
                 };
-                
-                // 改用 readAsArrayBuffer 提高相容性
                 reader.readAsArrayBuffer(file);
-                // 重置 input 以便重複上傳同一檔案
-                e.target.value = null;
+            };
+
+            // 處理點擊選擇檔案
+            const handleFileSelect = (e) => {
+                const file = e.target.files[0];
+                processFile(file);
+                e.target.value = null; // 重置 input
+            };
+
+            // 處理拖曳事件
+            const handleDragOver = (e) => {
+                e.preventDefault();
+                setIsDragging(true);
+            };
+
+            const handleDragLeave = (e) => {
+                e.preventDefault();
+                setIsDragging(false);
+            };
+
+            const handleDrop = (e) => {
+                e.preventDefault();
+                setIsDragging(false);
+                const file = e.dataTransfer.files[0];
+                processFile(file);
             };
 
             const saveToFirestore = async () => {
@@ -326,7 +322,6 @@
                     console.error("Error saving: ", error);
                     if (error.code === 'permission-denied') {
                         setErrorMsg("寫入被拒絕！請確認 Firebase 權限。");
-                        alert("匯入失敗：權限不足");
                     } else {
                         alert("匯入失敗: " + error.message);
                     }
@@ -335,6 +330,7 @@
                 }
             };
 
+            // ... (Filter Logic and Stats Logic remain the same) ...
             const filteredData = useMemo(() => {
                 return dbData.filter(item => {
                     const searchStr = searchTerm.toLowerCase();
@@ -412,16 +408,14 @@
 
             return (
                 <div className="flex flex-col h-full w-full">
-                    
+                    {/* Error Banner */}
                     {errorMsg && (
                         <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-6 rounded-r shadow-sm">
                             <div className="flex items-start">
                                 <div className="flex-shrink-0"><Icon name="Lock" className="h-5 w-5 text-red-500" /></div>
                                 <div className="ml-3">
                                     <h3 className="text-sm font-medium text-red-800">資料庫連線錯誤</h3>
-                                    <div className="mt-2 text-sm text-red-700">
-                                        <p>{errorMsg}</p>
-                                    </div>
+                                    <div className="mt-2 text-sm text-red-700"><p>{errorMsg}</p></div>
                                 </div>
                             </div>
                         </div>
@@ -469,7 +463,6 @@
 
                     {/* Content */}
                     <div className="bg-white rounded-xl shadow-sm border border-slate-200 min-h-[500px] overflow-hidden">
-                        {/* Dashboard Home */}
                         {activeTab === 'dashboard' && (
                             <div className="p-8 flex flex-col items-center justify-center text-center h-full">
                                 <div className="max-w-md">
@@ -480,15 +473,28 @@
                             </div>
                         )}
 
-                        {/* Import */}
                         {activeTab === 'import' && (
                             <div className="p-6">
-                                <div className="border-2 border-dashed border-slate-300 rounded-xl p-8 flex flex-col items-center justify-center bg-slate-50 hover:bg-slate-100 transition-colors cursor-pointer relative mb-6">
-                                    <input type="file" accept=".xlsx, .xls, .csv" onChange={handleFileUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
-                                    <Icon name="Upload" className="w-12 h-12 text-blue-500 mb-4" />
+                                {/* 修復：使用 div 處理點擊和拖曳，input 隱藏 */}
+                                <div 
+                                    onClick={() => fileInputRef.current && fileInputRef.current.click()}
+                                    onDragOver={handleDragOver}
+                                    onDragLeave={handleDragLeave}
+                                    onDrop={handleDrop}
+                                    className={`border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center bg-slate-50 hover:bg-slate-100 transition-colors cursor-pointer relative mb-6 ${isDragging ? 'border-blue-500 bg-blue-50' : 'border-slate-300'}`}
+                                >
+                                    <input 
+                                        type="file" 
+                                        accept=".xlsx, .xls, .csv" 
+                                        ref={fileInputRef}
+                                        onChange={handleFileSelect} 
+                                        className="hidden" 
+                                    />
+                                    <Icon name="Upload" className={`w-12 h-12 mb-4 ${isDragging ? 'text-blue-600' : 'text-blue-500'}`} />
                                     <p className="text-lg font-medium text-slate-700">點擊或拖曳 Excel 檔案至此</p>
-                                    <p className="text-sm text-slate-400 mt-2">支援標準未交訂單格式</p>
+                                    <p className="text-sm text-slate-400 mt-2">支援標準未交訂單格式 (.xlsx)</p>
                                 </div>
+
                                 {fileData.length > 0 && (
                                     <div className="animate-fade-in">
                                         <div className="flex items-center justify-between mb-4">
@@ -529,7 +535,6 @@
                             </div>
                         )}
 
-                        {/* List */}
                         {activeTab === 'list' && (
                             <div className="flex flex-col h-full">
                                 <div className="p-4 border-b border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white">
@@ -595,7 +600,6 @@
             );
         };
 
-        // --- App 主程式 ---
         const App = () => {
             const [user, setUser] = useState(null);
             const [loading, setLoading] = useState(true);
@@ -613,21 +617,11 @@
                 return unsubscribe;
             }, []);
 
-            // 處理 Admin 登入 (使用匿名登入但偽裝成 Admin)
             const handleAdminLogin = async (username, password) => {
-                if (!auth) { 
-                    setLoginError("系統錯誤：Firebase 未初始化"); 
-                    return; 
-                }
-                
-                // 簡單的前端驗證 (實際專案建議使用 Firebase Auth Email/Password)
+                if (!auth) { setLoginError("系統錯誤：Firebase 未初始化"); return; }
                 if (username === 'admin' && password === 'admin') {
                     try {
-                        // 登入 Firebase 以取得權限
                         const userCredential = await signInAnonymously(auth);
-                        // 在前端標記為 Admin (這裡只是前端顯示用，實際權限由 Firestore Rules 控制)
-                        // 注意：signInAnonymously 返回的 user 是匿名的，我們可以在這裡手動更新 user state 或在 Dashboard 顯示 Admin
-                        // 為了簡單，我們直接讓 user 狀態更新，Dashboard 會抓到
                     } catch(e) {
                         setLoginError("連線失敗: " + e.message);
                     }
@@ -636,24 +630,18 @@
                 }
             };
 
-            const handleLogout = async () => { 
-                if (auth) {
-                    await signOut(auth);
-                }
-                setUser(null);
-            };
+            const handleLogout = async () => { if (auth) await signOut(auth); setUser(null); };
 
             if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><Icon name="RefreshCw" className="w-8 h-8 text-blue-600 animate-spin" /></div>;
 
             return (
                 <div className="min-h-screen bg-slate-50 flex flex-col">
-                    {/* Header */}
                     {user && (
                         <header className="bg-white shadow-sm border-b border-slate-200 sticky top-0 z-10">
                             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
                                 <div className="flex items-center gap-2">
                                     <div className="bg-blue-600 p-1.5 rounded-lg"><Icon name="Package" className="w-5 h-5 text-white" /></div>
-                                    <h1 className="text-xl font-bold text-slate-800 tracking-tight">鎰呈行生管系統 <span className="text-xs font-normal text-slate-500 ml-2">v2.6 (Admin)</span></h1>
+                                    <h1 className="text-xl font-bold text-slate-800 tracking-tight">鎰呈行生管系統 <span className="text-xs font-normal text-slate-500 ml-2">v2.8 (Admin)</span></h1>
                                 </div>
                                 <div className="flex items-center gap-4">
                                     <div className="hidden md:flex text-sm text-slate-500">使用者: Admin</div>
@@ -662,15 +650,11 @@
                             </div>
                         </header>
                     )}
-
                     <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
                         {user ? (
                             <Dashboard user={{...user, displayName: 'Admin'}} onLogout={handleLogout} />
                         ) : (
-                            <Login 
-                                onAdminLogin={handleAdminLogin}
-                                error={loginError} 
-                            />
+                            <Login onAdminLogin={handleAdminLogin} error={loginError} />
                         )}
                     </main>
                 </div>
