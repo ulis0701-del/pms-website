@@ -3,27 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>鎰呈行訂單管理系統 v4.1 (深度優化終極版)</title>
+    <title>鎰呈行訂單管理系統 v4.1 (匿名驗證版)</title>
     
-    <!-- 
-      系統架構說明:
-      1. 前端框架: React 18 (透過 CDN 引入，不需 Node.js 環境)
-      2. 樣式庫: Tailwind CSS (快速切版)
-      3. 資料庫: Google Firebase Firestore (NoSQL 雲端資料庫)
-      4. Excel 處理: SheetJS (xlsx.full.min.js)
-      5. 編譯器: Babel (瀏覽器端即時編譯 JSX)
-    -->
-
-    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- SheetJS (Excel 讀取與匯出核心) -->
     <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
 
-    <!-- Babel (讓瀏覽器看得懂 React JSX 語法) -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-    <!-- Import Maps: 定義模組來源，讓 import 語法在瀏覽器運作 -->
     <script type="importmap">
     {
         "imports": {
@@ -38,18 +25,15 @@
     </script>
     
     <style>
-        /* 基礎動畫與樣式設定 */
         .animate-fade-in { animation: fadeIn 0.3s ease-in-out; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         body { font-family: "Noto Sans TC", sans-serif; }
         
-        /* 表格容器：設定最大高度以支援表頭固定效果 */
         .table-container {
             overflow-x: auto;
             max-width: 100%;
             max-height: 70vh;
         }
-        /* 固定表頭 (Sticky Header) */
         .table-container thead th {
             position: sticky;
             top: 0;
@@ -57,7 +41,6 @@
             z-index: 10;
             white-space: nowrap;
         }
-        /* 固定最右側操作欄位 (Sticky Column) */
         .action-col {
             position: sticky;
             right: 0;
@@ -65,7 +48,6 @@
             z-index: 5;
             box-shadow: -2px 0 5px rgba(0,0,0,0.05);
         }
-        /* 當表頭與固定欄位重疊時，提升 z-index */
         .table-container thead th.action-col {
             background-color: #f1f5f9;
             z-index: 15;
@@ -85,7 +67,6 @@
 
     <div id="root"></div>
 
-    <!-- 主程式邏輯開始 -->
     <script type="text/babel" data-type="module">
         import React, { useState, useEffect, useMemo, useRef } from 'react';
         import { createRoot } from 'react-dom/client';
@@ -108,8 +89,7 @@
             Timestamp 
         } from 'firebase/firestore';
 
-        // --- 錯誤邊界元件 (Error Boundary) ---
-        // 用途：當 React 組件發生崩潰時，攔截錯誤並顯示友善的錯誤畫面，而不是讓整個網頁變白。
+        // --- Error Boundary ---
         class ErrorBoundary extends React.Component {
             constructor(props) {
                 super(props);
@@ -123,7 +103,7 @@
                         <div className="min-h-screen flex flex-col items-center justify-center bg-red-50 p-8">
                             <div className="bg-white p-8 rounded-xl shadow-lg max-w-lg w-full border border-red-200">
                                 <h1 className="text-2xl font-bold text-red-600 mb-4 flex items-center gap-2">系統發生錯誤</h1>
-                                <p className="text-slate-600 mb-4">很抱歉，程式執行時發生了意外錯誤。這可能是因為資料格式不符。</p>
+                                <p className="text-slate-600 mb-4">很抱歉，程式執行時發生了意外錯誤。</p>
                                 <div className="bg-slate-100 p-4 rounded text-xs text-red-500 font-mono overflow-auto max-h-40 mb-6">
                                     {this.state.error && this.state.error.toString()}
                                 </div>
@@ -136,7 +116,7 @@
             }
         }
 
-        // --- Firebase 設定區 ---
+        // --- Firebase Config ---
         const firebaseConfig = {
             apiKey: "AIzaSyB3ChFwdh00DHs5dKDmzGbICellr4p9KVQ",
             authDomain: "yeechain-pms.firebaseapp.com",
@@ -147,20 +127,18 @@
             measurementId: "G-HMXZYNY1S1"
         };
 
-        // --- 初始化 Firebase ---
         let app, auth, db, analytics;
         try {
             app = initializeApp(firebaseConfig);
             auth = getAuth(app);
             db = getFirestore(app);
             analytics = getAnalytics(app);
-            console.log("Firebase initialized successfully");
+            console.log("Firebase initialized");
         } catch (e) {
-            console.error("Firebase 初始化錯誤:", e);
+            console.error("Firebase Init Error:", e);
         }
 
-        // --- SVG 圖示庫 ---
-        // 使用內嵌 SVG 以減少外部請求，提升載入速度。
+        // --- SVG Icons ---
         const Icons = {
             Package: <><path d="m16.5 9.4-9-5.19M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.27 6.96 12 12.01l8.73-5.05"/><path d="M12 22.08V12"/></>,
             LogOut: <><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></>,
@@ -192,7 +170,7 @@
             return <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>{content}</svg>;
         };
 
-        // --- UI 組件: 簡單的長條圖 ---
+        // --- Components ---
         const SimpleBarChart = ({ data, title, colorClass = "bg-blue-500" }) => {
             if (!data || data.length === 0) return <div className="p-4 text-center text-slate-400">尚無資料</div>;
             const maxVal = Math.max(...data.map(d => d.value)) || 1;
@@ -214,7 +192,6 @@
             );
         };
 
-        // --- 登入畫面元件 ---
         const Login = ({ onAdminLogin, error }) => {
             const [username, setUsername] = useState('');
             const [password, setPassword] = useState('');
@@ -224,7 +201,6 @@
                     <div className="max-w-md w-full bg-white rounded-xl shadow-lg p-8 border border-slate-100">
                         <div className="flex flex-col items-center mb-8">
                             <div className="mb-4">
-                                {/* Logo 顯示邏輯：優先讀取 logo.png，若失敗則顯示後備 Icon */}
                                 <img src="logo.png" alt="Logo" className="h-16 w-auto mx-auto object-contain" onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }} />
                                 <div className="hidden bg-blue-600 p-3 rounded-full mx-auto justify-center items-center" style={{ width: 'fit-content' }}><Icon name="Package" className="w-8 h-8 text-white" /></div>
                             </div>
@@ -254,7 +230,6 @@
             );
         };
 
-        // --- 主儀表板元件 (核心邏輯區) ---
         const Dashboard = ({ user, onLogout }) => {
             const [fileData, setFileData] = useState([]);
             const [dbData, setDbData] = useState([]);
@@ -268,10 +243,8 @@
             const [selectedIds, setSelectedIds] = useState(new Set());
             const fileInputRef = useRef(null);
 
-            // 首次載入時讀取資料庫
             useEffect(() => { fetchOrders(); }, [user]);
 
-            // --- 讀取資料庫邏輯 ---
             const fetchOrders = async () => {
                 if (!db) return;
                 setLoading(true);
@@ -279,7 +252,6 @@
                     const q = query(collection(db, 'orders'));
                     const querySnapshot = await getDocs(q);
                     const data = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    // 預設排序：依交貨日期，空白排最後
                     data.sort((a, b) => {
                         const dateA = a['交貨日期'] || '9999-12-31';
                         const dateB = b['交貨日期'] || '9999-12-31';
@@ -289,12 +261,11 @@
                     setSelectedIds(new Set());
                 } catch (error) {
                     console.error(error);
-                    if (error.code === 'permission-denied') setErrorMsg("權限不足！請確認 Firestore Rules。");
+                    if (error.code === 'permission-denied') setErrorMsg("權限不足！請確認您已開啟匿名登入且 Firestore Rules 設定正確。");
                     else setErrorMsg("資料讀取失敗: " + error.message);
                 } finally { setLoading(false); }
             };
 
-            // --- Excel 檔案解析邏輯 ---
             const processFile = (file) => {
                 if (!file || !(file instanceof Blob)) return;
                 const reader = new FileReader();
@@ -303,82 +274,55 @@
                         const data = new Uint8Array(evt.target.result);
                         const wb = window.XLSX.read(data, { type: 'array' });
                         const ws = wb.Sheets[wb.SheetNames[0]];
-                        
-                        // 步驟 1: 尋找真正的表頭列
-                        // 策略：掃描前 30 行，尋找包含「訂單號碼」的列
                         const rawData = window.XLSX.utils.sheet_to_json(ws, { header: 1 });
                         let headerRowIndex = -1;
                         for (let i = 0; i < Math.min(30, rawData.length); i++) {
                             const row = rawData[i];
                             if (Array.isArray(row)) {
                                 const rowStr = row.map(cell => String(cell).trim());
-                                if (rowStr.includes('訂單號碼')) {
-                                    headerRowIndex = i;
-                                    break;
-                                }
+                                if (rowStr.includes('訂單號碼')) { headerRowIndex = i; break; }
                             }
                         }
-
                         if (headerRowIndex === -1) { alert("無法自動偵測表頭！請確認檔案包含「訂單號碼」欄位。"); return; }
-
-                        // 步驟 2: 讀取資料
                         const jsonData = window.XLSX.utils.sheet_to_json(ws, { range: headerRowIndex });
-                        
-                        // 步驟 3: 資料淨化 (移除重複的 _1 欄位)
-                        // SheetJS 會將重複表頭命名為 '欄位_1'，我們需要移除它以保持乾淨
                         const processedJson = jsonData.map(row => {
                             const newRow = { ...row };
                             Object.keys(newRow).forEach(key => {
-                                if (key.endsWith('_1') && newRow[key.replace('_1', '')] !== undefined) {
-                                    delete newRow[key];
-                                }
+                                if (key.endsWith('_1') && newRow[key.replace('_1', '')] !== undefined) delete newRow[key];
                             });
                             return newRow;
                         });
-
-                        // 步驟 4: 過濾空行 (必須要有訂單號碼)
                         const cleanData = processedJson.filter(row => {
                             if (!row) return false;
                             const keys = Object.keys(row);
                             const orderKey = keys.find(key => key && key.trim() === '訂單號碼');
                             return orderKey && row[orderKey] && row[orderKey] !== '訂單號碼';
                         });
-                        
                         if (cleanData.length === 0) { alert("匯入失敗：無有效資料"); return; }
-
                         setFileData(cleanData);
                         setActiveTab('import');
                         setSuccessMsg(`成功讀取 ${cleanData.length} 筆資料！`);
                         setTimeout(() => setSuccessMsg(null), 5000);
-                    } catch (error) {
-                        alert("解析錯誤：" + error.message);
-                    }
+                    } catch (error) { alert("解析錯誤：" + error.message); }
                 };
                 reader.readAsArrayBuffer(file);
             };
 
-            // 處理拖曳上傳
             const handleDragOver = (e) => { e.preventDefault(); e.stopPropagation(); if(e.dataTransfer) e.dataTransfer.dropEffect='copy'; setIsDragging(true); };
             const handleDrop = (e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(false); if(e.dataTransfer.files[0]) processFile(e.dataTransfer.files[0]); };
 
-            // --- 寫入資料庫 ---
             const saveToFirestore = async () => {
                 if (fileData.length === 0 || !db) return;
                 setUploading(true);
                 try {
-                    // Firestore 批量寫入限制為 500 筆，這裡安全起見設為 450
                     const batchSize = 450;
                     const chunks = [];
                     for (let i = 0; i < fileData.length; i += batchSize) chunks.push(fileData.slice(i, i + batchSize));
-                    
                     for (const chunk of chunks) {
                         const batch = writeBatch(db);
                         chunk.forEach((row) => {
                             const cleanRow = {};
-                            // 安全地處理 Key，移除前後空白
-                            Object.keys(row).forEach(key => {
-                                if (key) cleanRow[key.trim()] = row[key];
-                            });
+                            Object.keys(row).forEach(key => { if (key) cleanRow[key.trim()] = row[key]; });
                             const docRef = doc(collection(db, 'orders'));
                             batch.set(docRef, { ...cleanRow, uploadedAt: Timestamp.now(), uploadedBy: user.displayName || 'Admin' });
                         });
@@ -389,7 +333,6 @@
                 } catch (e) { alert("匯入失敗: " + e.message); } finally { setUploading(false); }
             };
 
-            // --- 刪除功能 ---
             const handleDelete = async (id) => {
                 if (!confirm("確定刪除？")) return;
                 setLoading(true);
@@ -401,7 +344,6 @@
                 } catch(e) { alert(e.message); } finally { setLoading(false); }
             };
 
-            // 修復：補回漏掉的 handleDeleteAll 函式
             const handleDeleteAll = async () => {
                 if (!confirm("警告：確定要清空所有訂單資料嗎？此動作無法復原！")) return;
                 setLoading(true);
@@ -421,12 +363,7 @@
                     setSelectedIds(new Set());
                     setSuccessMsg(`已成功清空 ${docs.length} 筆資料！`);
                     setTimeout(() => setSuccessMsg(null), 3000);
-                } catch (error) {
-                    console.error("Delete All error: ", error);
-                    alert("清空失敗：" + error.message);
-                } finally {
-                    setLoading(false);
-                }
+                } catch (error) { alert("清空失敗：" + error.message); } finally { setLoading(false); }
             };
 
             const handleDeleteSelected = async () => {
@@ -442,20 +379,17 @@
                 } catch(e) { alert(e.message); } finally { setLoading(false); }
             };
 
-            // --- 輔助函式：安全取得物件值 ---
             const getValue = (obj, keyName) => {
                 if (!obj) return '';
-                // 支援模糊比對，忽略空白差異
                 const key = Object.keys(obj).find(k => k.trim() === keyName);
                 return key ? obj[key] : '';
             };
             
-            // --- 輔助函式：取得數值 (處理千分位逗號) ---
             const getQty = (obj) => {
                 if (!obj) return 0;
                 const key = Object.keys(obj).find(k => k.trim().includes('未交量'));
                 let val = key ? obj[key] : 0;
-                if (typeof val === 'string') val = val.replace(/,/g, ''); // 移除 "1,200" 中的逗號
+                if (typeof val === 'string') val = val.replace(/,/g, '');
                 return parseFloat(val) || 0;
             };
 
@@ -470,32 +404,25 @@
                 });
             }, [dbData, searchTerm]);
 
-            // --- 儀表板統計邏輯 ---
             const stats = useMemo(() => {
                 const today = new Date().toISOString().split('T')[0];
                 let totalUnfulfilled=0, overdueCount=0;
                 const customersMap={}, monthlyMap={};
-
                 dbData.forEach(d => {
                     const qty = getQty(d);
                     totalUnfulfilled += qty;
-                    // 修正：依照「交貨日期」判斷逾期
                     const date = getValue(d, '交貨日期');
                     if (date && date < today && qty > 0) overdueCount++;
                     const client = getValue(d, '客戶名稱') || 'Unknown';
                     customersMap[client] = (customersMap[client]||0) + qty;
-                    // 月份統計
                     if (date && date.length>=7) {
                         const m = date.substring(0,7);
                         monthlyMap[m] = (monthlyMap[m]||0) + qty;
                     }
                 });
-
-                // 產生急件清單：有未交量且交期最早的前 5 筆
                 const urgentList = dbData.filter(d=>getQty(d)>0)
                     .sort((a,b) => (getValue(a,'交貨日期')||'9').localeCompare(getValue(b,'交貨日期')||'9'))
                     .slice(0,5);
-
                 return {
                     totalOrders: dbData.length,
                     totalUnfulfilled,
@@ -512,7 +439,6 @@
                 return Object.keys(fileData[0]);
             }, [fileData]);
 
-            // 動態產生表格標頭 (排序：重要欄位優先)
             const allTableHeaders = useMemo(() => {
                 if (!dbData || dbData.length === 0) return [];
                 const keys = new Set();
@@ -532,7 +458,6 @@
                 });
             }, [dbData]);
 
-            // --- 匯出功能 ---
             const handleExport = (dataToExport, name) => {
                 if(!dataToExport.length) {alert("無資料"); return;}
                 const exportData = dataToExport.map(row => ({
@@ -562,7 +487,6 @@
                     {errorMsg && <div className="bg-red-50 p-4 border-l-4 border-red-500 text-red-700 mb-4">{errorMsg}</div>}
                     {successMsg && <div className="bg-green-50 p-4 border-l-4 border-green-500 text-green-700 mb-4 animate-fade-in">{successMsg}</div>}
 
-                    {/* Tabs Navigation */}
                     <div className="flex space-x-1 bg-slate-200 p-1 rounded-lg w-fit mb-6">
                         <button onClick={()=>setActiveTab('dashboard')} className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab==='dashboard'?'bg-white text-blue-600 shadow-sm':'text-slate-600'}`}>儀表板</button>
                         <button onClick={()=>setActiveTab('list')} className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab==='list'?'bg-white text-blue-600 shadow-sm':'text-slate-600'}`}>未交訂單列表</button>
@@ -570,7 +494,6 @@
                     </div>
 
                     <div className="bg-white rounded-xl shadow-sm border border-slate-200 min-h-[500px] overflow-hidden">
-                        {/* 1. Dashboard View */}
                         {activeTab === 'dashboard' && (
                             <div className="p-6 bg-slate-50 h-full overflow-y-auto">
                                 <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
@@ -594,7 +517,6 @@
                             </div>
                         )}
 
-                        {/* 2. Import View */}
                         {activeTab === 'import' && (
                             <div className="p-6">
                                 <div onClick={()=>fileInputRef.current.click()} onDragOver={handleDragOver} onDrop={handleDrop} className={`border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center bg-slate-50 hover:bg-slate-100 cursor-pointer mb-6 ${isDragging?'border-blue-500':''}`}>
@@ -613,7 +535,6 @@
                             </div>
                         )}
 
-                        {/* 3. List View */}
                         {activeTab === 'list' && (
                             <div className="flex flex-col h-full">
                                 <div className="p-4 border-b flex justify-between items-center bg-white">
@@ -661,18 +582,18 @@
             );
         };
 
-        // --- 主程式入口 ---
         const App = () => {
             const [user, setUser] = useState(null);
             const [loading, setLoading] = useState(true);
             const [loginError, setLoginError] = useState(null);
 
-            // 監聽 Auth 狀態
             useEffect(() => {
                 if (!auth) { setLoading(false); return; }
                 return onAuthStateChanged(auth, u => { setUser(u); setLoading(false); });
             }, []);
 
+            // 這裡就是關鍵：前端仍維持密碼檢查，但檢查通過後會執行「匿名登入」
+            // 這樣可以防止路人亂按，但對 Firebase 而言，這是一個「已驗證的匿名使用者」
             const handleLogin = async (u, p) => {
                 if(!auth){setLoginError("Firebase Error"); return;}
                 if(u==='admin' && p==='sweet405') {
